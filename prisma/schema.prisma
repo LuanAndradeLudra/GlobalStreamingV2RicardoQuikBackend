@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AuthProvider {
+  GOOGLE
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum ConnectedPlatform {
+  TWITCH
+  KICK
+  YOUTUBE
+  INSTAGRAM
+  TIKTOK
+}
+
+model User {
+  id          String             @id @default(uuid())
+  email       String             @unique
+  displayName String
+  avatarUrl   String?
+  provider    AuthProvider
+  providerId  String
+  role        UserRole           @default(USER)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  accounts    ConnectedAccount[]
+
+  @@unique([provider, providerId])
+}
+
+model ConnectedAccount {
+  id                String             @id @default(uuid())
+  userId            String
+  platform          ConnectedPlatform
+  externalChannelId String
+  displayName       String
+  accessToken       String
+  refreshToken      String?
+  scopes            String?
+  expiresAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, externalChannelId])
+}

@@ -1,0 +1,30 @@
+version: '3.9'
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: trully-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trullygiveaway
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  api:
+    build: .
+    container_name: trully-api
+    command: npm run start:dev
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/trullygiveaway?schema=public
+      PORT: 3000
+    ports:
+      - '3000:3000'
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - db
+volumes:
+  pgdata:
