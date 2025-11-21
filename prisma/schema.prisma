@@ -25,16 +25,18 @@ enum ConnectedPlatform {
 }
 
 model User {
-  id          String             @id @default(uuid())
-  email       String             @unique
-  displayName String
-  avatarUrl   String?
-  provider    AuthProvider
-  providerId  String
-  role        UserRole           @default(USER)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  accounts    ConnectedAccount[]
+  id                      String                      @id @default(uuid())
+  email                   String                      @unique
+  displayName             String
+  avatarUrl               String?
+  provider                AuthProvider
+  providerId              String
+  role                    UserRole                    @default(USER)
+  createdAt               DateTime                    @default(now())
+  updatedAt               DateTime                    @updatedAt
+  accounts                ConnectedAccount[]
+  ticketGlobalRules       TicketGlobalRule[]
+  ticketGlobalDonationRules TicketGlobalDonationRule[]
 
   @@unique([provider, providerId])
 }
@@ -55,4 +57,36 @@ model ConnectedAccount {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([platform, externalChannelId])
+}
+
+// Global ticket rules per tier/role - default rules for all giveaways
+// These rules define how many tickets each user role/tier receives
+model TicketGlobalRule {
+  id            String            @id @default(uuid())
+  userId        String
+  platform      ConnectedPlatform
+  role          String            // ex: "NON_SUB", "SUB_TIER_1", "SUB_TIER_2", "SUB_TIER_3", "SUB_KICK", "SUB_YOUTUBE", "GIFT_SUB_DONOR"
+  ticketsPerUnit Int
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform, role])
+}
+
+// Global donation rules - default rules for all giveaways
+// These rules define how many units (bits, coins, etc.) equal one ticket
+model TicketGlobalDonationRule {
+  id            String            @id @default(uuid())
+  userId        String
+  platform      ConnectedPlatform
+  unitType      String            // "BITS", "KICK_COINS" etc.
+  unitsPerTicket Int             // ex: 100 = 100 bits = 1 ticket
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform, unitType])
 }
