@@ -11,6 +11,9 @@ export class TicketConfigService {
   /**
    * Get all global ticket rules and donation rules for a user.
    * These rules serve as defaults for all giveaways.
+   * 
+   * Global ticket rules define tickets based on the user's base subscription status.
+   * Donation rules define extra ticket increments based on quantity of bits/coins/gifts.
    */
   async getGlobalConfig(userId: string): Promise<{
     rules: TicketGlobalRule[];
@@ -19,7 +22,7 @@ export class TicketConfigService {
     const [rules, donationRules] = await Promise.all([
       this.prisma.ticketGlobalRule.findMany({
         where: { userId },
-        orderBy: [{ platform: 'asc' }, { role: 'asc' }],
+        orderBy: { role: 'asc' },
       }),
       this.prisma.ticketGlobalDonationRule.findMany({
         where: { userId },
@@ -32,7 +35,9 @@ export class TicketConfigService {
 
   /**
    * Upsert (create or update) global ticket rules for a user.
-   * These rules define how many tickets each user role/tier receives.
+   * These rules define tickets based on the user's base subscription status.
+   * Roles represent the "base state" of the user: non-sub, twitch tier, kick sub, youtube sub.
+   * Gift subs are handled in TicketGlobalDonationRule, not here.
    * These are default rules applied to all giveaways.
    */
   async upsertGlobalRules(
@@ -42,9 +47,8 @@ export class TicketConfigService {
     const upsertPromises = rules.map((rule) =>
       this.prisma.ticketGlobalRule.upsert({
         where: {
-          userId_platform_role: {
+          userId_role: {
             userId,
-            platform: rule.platform,
             role: rule.role,
           },
         },
@@ -53,7 +57,6 @@ export class TicketConfigService {
         },
         create: {
           userId,
-          platform: rule.platform,
           role: rule.role,
           ticketsPerUnit: rule.ticketsPerUnit,
         },
@@ -65,7 +68,11 @@ export class TicketConfigService {
 
   /**
    * Upsert (create or update) global donation rules for a user.
-   * These rules define how many units (bits, coins, etc.) equal one ticket.
+   * These rules define extra ticket increments based on quantity of bits/coins/gifts.
+   * Time window (daily/weekly/monthly) is not defined here; it will be set per giveaway.
+   * Examples:
+   *   - Bits: unitType="BITS", unitSize=100, ticketsPerUnitSize=1 → 100 bits = 1 ticket
+   *   - Gift subs: unitType="GIFT_SUB", unitSize=1, ticketsPerUnitSize=4 → 1 gift = 4 tickets
    * These are default rules applied to all giveaways.
    */
   async upsertGlobalDonationRules(
@@ -82,13 +89,15 @@ export class TicketConfigService {
           },
         },
         update: {
-          unitsPerTicket: rule.unitsPerTicket,
+          unitSize: rule.unitSize,
+          ticketsPerUnitSize: rule.ticketsPerUnitSize,
         },
         create: {
           userId,
           platform: rule.platform,
           unitType: rule.unitType,
-          unitsPerTicket: rule.unitsPerTicket,
+          unitSize: rule.unitSize,
+          ticketsPerUnitSize: rule.ticketsPerUnitSize,
         },
       }),
     );

@@ -33,7 +33,9 @@ export class GiveawayController {
     summary: 'Create a new giveaway',
     description:
       'Creates a new giveaway for the authenticated admin user. ' +
-      'If status is set to OPEN, any existing OPEN giveaway for this admin will be automatically closed.',
+      'Only one giveaway can be OPEN at a time per admin. Returns error 400 if trying to create OPEN when another already exists. ' +
+      'Keyword is required for LIVE_KEYWORD type. ' +
+      'Donation windows are required when includeBitsDonors or includeGiftSubDonors are true.',
   })
   @ApiResponse({
     status: 201,
@@ -51,6 +53,10 @@ export class GiveawayController {
           items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
         },
         keyword: { type: 'string', nullable: true },
+        includeBitsDonors: { type: 'boolean' },
+        includeGiftSubDonors: { type: 'boolean' },
+        bitsDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
+        giftSubDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
         configOverrideId: { type: 'string', nullable: true },
         createdAt: { type: 'string', format: 'date-time' },
         updatedAt: { type: 'string', format: 'date-time' },
@@ -59,7 +65,7 @@ export class GiveawayController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Bad request - invalid payload',
+    description: 'Bad request - invalid payload or trying to create OPEN giveaway when another already exists',
   })
   @ApiResponse({
     status: 401,
@@ -171,8 +177,8 @@ export class GiveawayController {
   @ApiOperation({
     summary: 'Update a giveaway',
     description:
-      'Updates a giveaway. Can update name, type, keyword, platforms, and status. ' +
-      'If status is changed to OPEN, any existing OPEN giveaway for this admin will be automatically closed.',
+      'Updates a giveaway. Can update name, type, keyword, platforms, status, donation flags, and donation windows. ' +
+      'Only one giveaway can be OPEN at a time per admin. Returns error 400 if trying to set OPEN when another already exists.',
   })
   @ApiResponse({
     status: 200,
@@ -190,6 +196,10 @@ export class GiveawayController {
           items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
         },
         keyword: { type: 'string', nullable: true },
+        includeBitsDonors: { type: 'boolean' },
+        includeGiftSubDonors: { type: 'boolean' },
+        bitsDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
+        giftSubDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
         configOverrideId: { type: 'string', nullable: true },
         createdAt: { type: 'string', format: 'date-time' },
         updatedAt: { type: 'string', format: 'date-time' },
@@ -198,7 +208,7 @@ export class GiveawayController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Bad request - invalid payload',
+    description: 'Bad request - invalid payload or trying to set OPEN when another giveaway is already OPEN',
   })
   @ApiResponse({
     status: 401,

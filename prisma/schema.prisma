@@ -39,6 +39,12 @@ enum GiveawayStatus {
   CLOSED
 }
 
+enum DonationWindow {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
 model User {
   id                      String                      @id @default(uuid())
   email                   String                      @unique
@@ -75,12 +81,14 @@ model ConnectedAccount {
   @@unique([platform, externalChannelId])
 }
 
-// Global ticket rules per tier/role - default rules for all giveaways
-// These rules define how many tickets each user role/tier receives
+// Global ticket rules - base status roles for all giveaways
+// These rules define how many tickets each user role/tier receives based on their subscription status
+// Roles represent the "base state" of the user: non-sub, twitch tier, kick sub, youtube sub
+// Gift subs are handled in TicketGlobalDonationRule, not here
 model TicketGlobalRule {
   id             String   @id @default(uuid())
   userId         String
-  role           String   // "NON_SUB", "TWITCH_TIER_1", "TWITCH_TIER_2", "TWITCH_TIER_3", "KICK_SUB", "YOUTUBE_SUB", "GIFT_SUB_DONOR"
+  role           String   // "NON_SUB", "TWITCH_TIER_1", "TWITCH_TIER_2", "TWITCH_TIER_3", "KICK_SUB", "YOUTUBE_SUB"
   ticketsPerUnit Int
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -90,16 +98,21 @@ model TicketGlobalRule {
   @@unique([userId, role])
 }
 
-// Global donation rules - default rules for all giveaways
-// These rules define how many units (bits, coins, etc.) equal one ticket
+// Global donation rules - extra ticket increments based on donations/gifts
+// These rules define ticket bonuses based on quantity of bits/coins/gifts
+// Time window (daily/weekly/monthly) is not defined here; it will be set per giveaway
+// Examples:
+//   - Bits: unitType="BITS", unitSize=100, ticketsPerUnitSize=1 → 100 bits = 1 ticket
+//   - Gift subs: unitType="GIFT_SUB", unitSize=1, ticketsPerUnitSize=4 → 1 gift = 4 tickets
 model TicketGlobalDonationRule {
-  id             String             @id @default(uuid())
-  userId         String
-  platform       ConnectedPlatform  // TWITCH, KICK, YOUTUBE…
-  unitType       String             // "BITS", "KICK_COINS", etc.
-  unitsPerTicket Int
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id                 String             @id @default(uuid())
+  userId             String
+  platform           ConnectedPlatform  // TWITCH, KICK, YOUTUBE…
+  unitType           String             // "BITS", "GIFT_SUB", "KICK_COINS", etc.
+  unitSize           Int                // size of the "block" of units (e.g., 100 bits, 1 gift)
+  ticketsPerUnitSize Int                // tickets per block (e.g., 1 ticket per 100 bits, 4 tickets per gift)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -107,20 +120,27 @@ model TicketGlobalDonationRule {
 }
 
 model Giveaway {
-  id              String                      @id @default(uuid())
-  userId          String
-  name            String
-  type            GiveawayType
-  status          GiveawayStatus
-  platforms       Json                        // Array of ConnectedPlatform
-  keyword         String?
-  configOverrideId String?
-  createdAt       DateTime                    @default(now())
-  updatedAt       DateTime                    @updatedAt
+  id                    String                      @id @default(uuid())
+  userId                String
+  name                  String
+  type                  GiveawayType
+  status                GiveawayStatus
+  platforms             Json                        // Array of ConnectedPlatform (TWITCH/KICK/YOUTUBE/INSTAGRAM/TIKTOK)
+  keyword               String?
 
-  user            User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ticketRuleOverrides GiveawayTicketRuleOverride[]
-  participants    GiveawayParticipant[]
+  // Configs de doação específicas desse sorteio
+  includeBitsDonors     Boolean                     @default(false)
+  includeGiftSubDonors  Boolean                     @default(false)
+  bitsDonationWindow    DonationWindow?
+  giftSubDonationWindow DonationWindow?
+
+  configOverrideId      String?
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+
+  user                  User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketRuleOverrides   GiveawayTicketRuleOverride[]
+  participants          GiveawayParticipant[]
 
   @@index([userId, status])
 }
@@ -128,15 +148,14 @@ model Giveaway {
 model GiveawayTicketRuleOverride {
   id              String            @id @default(uuid())
   giveawayId      String
-  platform        ConnectedPlatform
-  role            String
+  role            String            // mesma ideia de TicketGlobalRule.role (NON_SUB, TWITCH_TIER_1, etc.)
   ticketsPerUnit  Int
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
   giveaway        Giveaway          @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
 
-  @@unique([giveawayId, platform, role])
+  @@unique([giveawayId, role])
 }
 
 model GiveawayParticipant {
@@ -148,7 +167,7 @@ model GiveawayParticipant {
   isSub           Boolean
   subTier         Int?
   isGiftSubDonor  Boolean
-  donationAmount  Int?
+  donationAmount  Int?              // total de "unidades" (ex: bits/coins) considerados pra esse sorteio
   tickets         Int
   sourceDetails   Json?
   createdAt       DateTime          @default(now())

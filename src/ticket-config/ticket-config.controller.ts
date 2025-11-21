@@ -29,6 +29,8 @@ export class TicketConfigController {
     summary: 'Get global ticket configuration',
     description:
       'Returns all global ticket rules and donation rules for the authenticated admin user. ' +
+      'Global ticket rules define tickets based on the user\'s base subscription status. ' +
+      'Donation rules define extra ticket increments based on quantity of bits/coins/gifts. ' +
       'These rules serve as defaults for all giveaways.',
   })
   @ApiResponse({
@@ -44,8 +46,7 @@ export class TicketConfigController {
             properties: {
               id: { type: 'string' },
               userId: { type: 'string' },
-              platform: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
-              role: { type: 'string' },
+              role: { type: 'string', description: 'Base subscription status role (e.g., "NON_SUB", "TWITCH_TIER_1", "KICK_SUB")' },
               ticketsPerUnit: { type: 'number' },
               createdAt: { type: 'string', format: 'date-time' },
               updatedAt: { type: 'string', format: 'date-time' },
@@ -60,8 +61,9 @@ export class TicketConfigController {
               id: { type: 'string' },
               userId: { type: 'string' },
               platform: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
-              unitType: { type: 'string' },
-              unitsPerTicket: { type: 'number' },
+              unitType: { type: 'string', description: 'Type of donation unit (e.g., "BITS", "GIFT_SUB", "KICK_COINS")' },
+              unitSize: { type: 'number', description: 'Size of the "block" of units (e.g., 100 bits, 1 gift)' },
+              ticketsPerUnitSize: { type: 'number', description: 'Tickets per block (e.g., 1 ticket per 100 bits, 4 tickets per gift)' },
               createdAt: { type: 'string', format: 'date-time' },
               updatedAt: { type: 'string', format: 'date-time' },
             },
@@ -94,7 +96,9 @@ export class TicketConfigController {
     summary: 'Create or update global ticket rules',
     description:
       'Creates or updates global ticket rules for the authenticated admin user. ' +
-      'These rules define how many tickets each user role/tier receives. ' +
+      'These rules define tickets based on the user\'s base subscription status. ' +
+      'Roles represent the "base state" of the user: non-sub, twitch tier, kick sub, youtube sub. ' +
+      'Gift subs are handled in donation rules, not here. ' +
       'These are default rules applied to all giveaways.',
   })
   @ApiResponse({
@@ -142,7 +146,10 @@ export class TicketConfigController {
     summary: 'Create or update global donation rules',
     description:
       'Creates or updates global donation rules for the authenticated admin user. ' +
-      'These rules define how many units (bits, coins, etc.) equal one ticket. ' +
+      'These rules define extra ticket increments based on quantity of bits/coins/gifts. ' +
+      'Time window (daily/weekly/monthly) is not defined here; it will be set per giveaway. ' +
+      'Examples: unitType="BITS", unitSize=100, ticketsPerUnitSize=1 → 100 bits = 1 ticket; ' +
+      'unitType="GIFT_SUB", unitSize=1, ticketsPerUnitSize=4 → 1 gift = 4 tickets. ' +
       'These are default rules applied to all giveaways.',
   })
   @ApiResponse({

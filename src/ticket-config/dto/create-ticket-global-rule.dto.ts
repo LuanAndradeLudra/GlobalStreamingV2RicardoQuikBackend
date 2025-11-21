@@ -1,19 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsString, IsInt, Min } from 'class-validator';
-import { ConnectedPlatform } from '@prisma/client';
+import { IsString, IsInt, Min } from 'class-validator';
 
+/**
+ * DTO for creating/updating global ticket rules.
+ * These rules define tickets based on the user's base subscription status.
+ * Roles represent the "base state" of the user: non-sub, twitch tier, kick sub, youtube sub.
+ * Gift subs are handled in TicketGlobalDonationRule, not here.
+ */
 export class CreateTicketGlobalRuleDto {
   @ApiProperty({
-    description: 'Platform for this rule',
-    enum: ConnectedPlatform,
-    example: ConnectedPlatform.TWITCH,
-  })
-  @IsEnum(ConnectedPlatform)
-  platform: ConnectedPlatform;
-
-  @ApiProperty({
-    description: 'User role/tier (e.g., "NON_SUB", "SUB_TIER_1", "SUB_TIER_2", "SUB_TIER_3", "SUB_KICK", "SUB_YOUTUBE", "GIFT_SUB_DONOR")',
-    example: 'SUB_TIER_1',
+    description: 'User role/tier representing base subscription status (e.g., "NON_SUB", "TWITCH_TIER_1", "TWITCH_TIER_2", "TWITCH_TIER_3", "KICK_SUB", "YOUTUBE_SUB")',
+    example: 'TWITCH_TIER_1',
   })
   @IsString()
   role: string;
