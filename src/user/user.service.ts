@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AuthProvider, User } from '@prisma/client';
+import { AuthProvider, User, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -21,5 +21,16 @@ export class UserService {
         providerId,
       },
     });
+  }
+
+  create(data: {
+    email: string;
+    displayName: string;
+    avatarUrl?: string;
+    provider: AuthProvider;
+    providerId: string;
+    role?: UserRole;
+  }): Promise<User> {
+    return this.prisma.user.create({ data });
   }
 }

@@ -82,18 +82,52 @@ nano .env
 vim .env
 ```
 
-Configure the `DATABASE_URL`:
+Configure the environment variables:
 ```env
-# Format: postgresql://user:password@host:port/database?schema=public
+# Database
 DATABASE_URL="postgresql://your_user:your_password@localhost:5432/trullygiveaway?schema=public"
 
 # API port (optional, default: 3000)
 PORT=3000
+
+# Google OAuth (required for authentication)
+GOOGLE_CLIENT_ID=your_google_client_id_here
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here
+GOOGLE_CALLBACK_URL=http://localhost:3000/auth/google/callback
+
+# JWT (required for authentication)
+JWT_SECRET=your_jwt_secret_key_here_change_in_production
+JWT_EXPIRES_IN=7d
+
+# Frontend URL (for OAuth redirects)
+FRONTEND_URL=http://localhost:3000
 ```
 
-**Examples:**
+**Database Examples:**
 - Local PostgreSQL with default user: `postgresql://postgres:postgres@localhost:5432/trullygiveaway?schema=public`
 - Remote PostgreSQL: `postgresql://user:password@192.168.1.100:5432/trullygiveaway?schema=public`
+
+**Google OAuth Setup:**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable Google+ API (or Google Identity API)
+4. Go to "Credentials" → "Create Credentials" → "OAuth client ID"
+5. Choose "Web application"
+6. **IMPORTANT**: Add authorized redirect URI. It MUST match EXACTLY your `GOOGLE_CALLBACK_URL`:
+   - For local development: `http://localhost:3000/auth/google/callback`
+   - For production: `https://yourdomain.com/auth/google/callback`
+   - ⚠️ **The URL must match EXACTLY** (including http/https, port, path, trailing slashes)
+7. Copy the Client ID and Client Secret to your `.env` file
+
+**Troubleshooting `redirect_uri_mismatch` error:**
+- Check that `GOOGLE_CALLBACK_URL` in your `.env` matches EXACTLY the URL in Google Cloud Console
+- Common issues:
+  - `http://` vs `https://` mismatch
+  - Port mismatch (e.g., `:3000` vs `:8080`)
+  - Path mismatch (e.g., `/auth/google/callback` vs `/auth/google/callback/`)
+  - Domain mismatch (e.g., `localhost` vs `127.0.0.1`)
+- When the backend starts, it will log the callback URL being used - verify it matches Google Cloud Console
+- In Google Cloud Console, you can add multiple authorized redirect URIs (one for dev, one for prod)
 
 ### 6. Generate Prisma Client
 
