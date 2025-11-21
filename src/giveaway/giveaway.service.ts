@@ -205,11 +205,12 @@ export class GiveawayService {
     if (override) {
       baseTickets = override.ticketsPerUnit;
     } else {
-      // Use global rule
+      // Use global rule (must include platform, especially for NON_SUB)
       const globalRule = await this.prisma.ticketGlobalRule.findUnique({
         where: {
-          userId_role: {
+          userId_platform_role: {
             userId: input.adminUserId,
+            platform: input.platform,
             role: input.role,
           },
         },

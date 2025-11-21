@@ -84,18 +84,20 @@ model ConnectedAccount {
 // Global ticket rules - base status roles for all giveaways
 // These rules define how many tickets each user role/tier receives based on their subscription status
 // Roles represent the "base state" of the user: non-sub, twitch tier, kick sub, youtube sub
+// NON_SUB must be platform-specific (e.g., NON_SUB for Twitch, NON_SUB for Kick)
 // Gift subs are handled in TicketGlobalDonationRule, not here
 model TicketGlobalRule {
-  id             String   @id @default(uuid())
+  id             String             @id @default(uuid())
   userId         String
-  role           String   // "NON_SUB", "TWITCH_TIER_1", "TWITCH_TIER_2", "TWITCH_TIER_3", "KICK_SUB", "YOUTUBE_SUB"
+  platform       ConnectedPlatform  // Platform is required, especially for NON_SUB
+  role           String             // "NON_SUB", "TWITCH_TIER_1", "TWITCH_TIER_2", "TWITCH_TIER_3", "KICK_SUB", "YOUTUBE_SUB"
   ticketsPerUnit Int
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, role])
+  @@unique([userId, platform, role])
 }
 
 // Global donation rules - extra ticket increments based on donations/gifts

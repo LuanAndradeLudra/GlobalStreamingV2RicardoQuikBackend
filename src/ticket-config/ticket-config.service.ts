@@ -13,6 +13,7 @@ export class TicketConfigService {
    * These rules serve as defaults for all giveaways.
    * 
    * Global ticket rules define tickets based on the user's base subscription status.
+   * NON_SUB must be platform-specific (e.g., NON_SUB for Twitch, NON_SUB for Kick).
    * Donation rules define extra ticket increments based on quantity of bits/coins/gifts.
    */
   async getGlobalConfig(userId: string): Promise<{
@@ -22,7 +23,7 @@ export class TicketConfigService {
     const [rules, donationRules] = await Promise.all([
       this.prisma.ticketGlobalRule.findMany({
         where: { userId },
-        orderBy: { role: 'asc' },
+        orderBy: [{ platform: 'asc' }, { role: 'asc' }],
       }),
       this.prisma.ticketGlobalDonationRule.findMany({
         where: { userId },
@@ -37,6 +38,7 @@ export class TicketConfigService {
    * Upsert (create or update) global ticket rules for a user.
    * These rules define tickets based on the user's base subscription status.
    * Roles represent the "base state" of the user: non-sub, twitch tier, kick sub, youtube sub.
+   * NON_SUB must be platform-specific (e.g., NON_SUB for Twitch, NON_SUB for Kick).
    * Gift subs are handled in TicketGlobalDonationRule, not here.
    * These are default rules applied to all giveaways.
    */
@@ -47,8 +49,9 @@ export class TicketConfigService {
     const upsertPromises = rules.map((rule) =>
       this.prisma.ticketGlobalRule.upsert({
         where: {
-          userId_role: {
+          userId_platform_role: {
             userId,
+            platform: rule.platform,
             role: rule.role,
           },
         },
@@ -57,6 +60,7 @@ export class TicketConfigService {
         },
         create: {
           userId,
+          platform: rule.platform,
           role: rule.role,
           ticketsPerUnit: rule.ticketsPerUnit,
         },
