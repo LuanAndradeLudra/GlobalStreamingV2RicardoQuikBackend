@@ -24,6 +24,21 @@ enum ConnectedPlatform {
   TIKTOK
 }
 
+enum GiveawayType {
+  LIVE_KEYWORD
+  SUBS_ONLY
+  DONATION_ONLY
+  INSTAGRAM_COMMENTS
+  TIKTOK_COMMENTS
+  MANUAL
+}
+
+enum GiveawayStatus {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
 model User {
   id                      String                      @id @default(uuid())
   email                   String                      @unique
@@ -37,6 +52,7 @@ model User {
   accounts                ConnectedAccount[]
   ticketGlobalRules       TicketGlobalRule[]
   ticketGlobalDonationRules TicketGlobalDonationRule[]
+  giveaways               Giveaway[]
 
   @@unique([provider, providerId])
 }
@@ -62,31 +78,84 @@ model ConnectedAccount {
 // Global ticket rules per tier/role - default rules for all giveaways
 // These rules define how many tickets each user role/tier receives
 model TicketGlobalRule {
-  id            String            @id @default(uuid())
-  userId        String
-  platform      ConnectedPlatform
-  role          String            // ex: "NON_SUB", "SUB_TIER_1", "SUB_TIER_2", "SUB_TIER_3", "SUB_KICK", "SUB_YOUTUBE", "GIFT_SUB_DONOR"
+  id             String   @id @default(uuid())
+  userId         String
+  role           String   // "NON_SUB", "TWITCH_TIER_1", "TWITCH_TIER_2", "TWITCH_TIER_3", "KICK_SUB", "YOUTUBE_SUB", "GIFT_SUB_DONOR"
   ticketsPerUnit Int
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, platform, role])
+  @@unique([userId, role])
 }
 
 // Global donation rules - default rules for all giveaways
 // These rules define how many units (bits, coins, etc.) equal one ticket
 model TicketGlobalDonationRule {
-  id            String            @id @default(uuid())
-  userId        String
-  platform      ConnectedPlatform
-  unitType      String            // "BITS", "KICK_COINS" etc.
-  unitsPerTicket Int             // ex: 100 = 100 bits = 1 ticket
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  id             String             @id @default(uuid())
+  userId         String
+  platform       ConnectedPlatform  // TWITCH, KICK, YOUTUBE…
+  unitType       String             // "BITS", "KICK_COINS", etc.
+  unitsPerTicket Int
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, platform, unitType])
+}
+
+model Giveaway {
+  id              String                      @id @default(uuid())
+  userId          String
+  name            String
+  type            GiveawayType
+  status          GiveawayStatus
+  platforms       Json                        // Array of ConnectedPlatform
+  keyword         String?
+  configOverrideId String?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  user            User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketRuleOverrides GiveawayTicketRuleOverride[]
+  participants    GiveawayParticipant[]
+
+  @@index([userId, status])
+}
+
+model GiveawayTicketRuleOverride {
+  id              String            @id @default(uuid())
+  giveawayId      String
+  platform        ConnectedPlatform
+  role            String
+  ticketsPerUnit  Int
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  giveaway        Giveaway          @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+
+  @@unique([giveawayId, platform, role])
+}
+
+model GiveawayParticipant {
+  id              String            @id @default(uuid())
+  giveawayId      String
+  platform        ConnectedPlatform
+  externalUserId  String
+  username        String
+  isSub           Boolean
+  subTier         Int?
+  isGiftSubDonor  Boolean
+  donationAmount  Int?
+  tickets         Int
+  sourceDetails   Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  giveaway        Giveaway          @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+
+  @@index([giveawayId])
+  @@index([giveawayId, platform, externalUserId])
 }
