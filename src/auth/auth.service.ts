@@ -33,6 +33,7 @@ export class AuthService {
     if (email) {
       user = await this.userService.findByEmail(email);
       if (user) {
+        // TODO: Update existing user with Google provider info
         // Update existing user with Google provider info
         // Note: This would require an update method in UserService
         // For now, we'll create a new user if email exists but provider doesn't match
