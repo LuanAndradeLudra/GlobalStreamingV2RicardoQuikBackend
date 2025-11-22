@@ -2,12 +2,226 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGiveawayDto } from './dto/create-giveaway.dto';
 import { UpdateGiveawayDto } from './dto/update-giveaway.dto';
-import { Giveaway, GiveawayStatus, GiveawayType, ConnectedPlatform } from '@prisma/client';
+import { Giveaway, GiveawayStatus, ConnectedPlatform } from '@prisma/client';
 import { CreateGiveawayTicketRuleOverrideDto } from './dto/create-giveaway-ticket-rule-override.dto';
+import { CreateGiveawayDonationRuleOverrideDto } from './dto/create-giveaway-donation-rule-override.dto';
 
 @Injectable()
 export class GiveawayService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Get the universe of valid roles for given platforms.
+   * NON_SUB is now platform-specific: TWITCH_NON_SUB, KICK_NON_SUB, YOUTUBE_NON_SUB.
+   * Adds platform-specific subscription roles based on platforms.
+   */
+  getRoleUniverseForPlatforms(platforms: ConnectedPlatform[]): string[] {
+    const roles: string[] = [];
+
+    // Add platform-specific NON_SUB roles
+    if (platforms.includes(ConnectedPlatform.TWITCH)) {
+      roles.push('TWITCH_NON_SUB', 'TWITCH_TIER_1', 'TWITCH_TIER_2', 'TWITCH_TIER_3');
+    }
+    if (platforms.includes(ConnectedPlatform.KICK)) {
+      roles.push('KICK_NON_SUB', 'KICK_SUB');
+    }
+    if (platforms.includes(ConnectedPlatform.YOUTUBE)) {
+      roles.push('YOUTUBE_NON_SUB', 'YOUTUBE_SUB');
+    }
+
+    return roles;
+  }
+
+  /**
+   * Normalize allowedRoles based on shortcuts and platforms.
+   * - If subsOnly: expand to all subscription roles for selected platforms
+   * - If nonSubsOnly: set to ["NON_SUB"]
+   * - Otherwise: validate against role universe
+   */
+  normalizeAllowedRoles(
+    input: {
+      subsOnly?: boolean;
+      nonSubsOnly?: boolean;
+      allowedRoles?: string[];
+      platforms: ConnectedPlatform[];
+    },
+  ): string[] {
+    const { subsOnly, nonSubsOnly, allowedRoles, platforms } = input;
+
+    if (nonSubsOnly) {
+      // Return platform-specific NON_SUB roles
+      const roles: string[] = [];
+      if (platforms.includes(ConnectedPlatform.TWITCH)) {
+        roles.push('TWITCH_NON_SUB');
+      }
+      if (platforms.includes(ConnectedPlatform.KICK)) {
+        roles.push('KICK_NON_SUB');
+      }
+      if (platforms.includes(ConnectedPlatform.YOUTUBE)) {
+        roles.push('YOUTUBE_NON_SUB');
+      }
+      return roles;
+    }
+
+    if (subsOnly) {
+      const universe = this.getRoleUniverseForPlatforms(platforms);
+      // Return all roles except NON_SUB variants
+      return universe.filter((role) => !role.includes('NON_SUB'));
+    }
+
+    if (allowedRoles && allowedRoles.length > 0) {
+      const universe = this.getRoleUniverseForPlatforms(platforms);
+      // Validate that all provided roles are in the universe
+      const invalidRoles = allowedRoles.filter((role) => !universe.includes(role));
+      if (invalidRoles.length > 0) {
+        throw new BadRequestException(
+          `Invalid roles for selected platforms: ${invalidRoles.join(', ')}. Valid roles: ${universe.join(', ')}`,
+        );
+      }
+      return allowedRoles;
+    }
+
+    // Default: allow all roles
+    return this.getRoleUniverseForPlatforms(platforms);
+  }
+
+  /**
+   * Validate platforms are stream platforms only (TWITCH, KICK, YOUTUBE).
+   */
+  validatePlatforms(platforms: ConnectedPlatform[]): void {
+    const streamPlatforms: ConnectedPlatform[] = [ConnectedPlatform.TWITCH, ConnectedPlatform.KICK, ConnectedPlatform.YOUTUBE];
+    const invalidPlatforms = platforms.filter((p) => !streamPlatforms.includes(p));
+    if (invalidPlatforms.length > 0) {
+      throw new BadRequestException(
+        `Invalid platforms: ${invalidPlatforms.join(', ')}. Only stream platforms are allowed: TWITCH, KICK, YOUTUBE`,
+      );
+    }
+  }
+
+  /**
+   * Upsert ticket rule overrides for a giveaway.
+   * Removes existing overrides not in the new list, creates/updates the ones provided.
+   */
+  async upsertTicketOverrides(
+    giveawayId: string,
+    overrides: CreateGiveawayTicketRuleOverrideDto[] | undefined,
+  ): Promise<void> {
+    if (!overrides) {
+      return;
+    }
+
+    // Get existing overrides
+    const existing = await this.prisma.giveawayTicketRuleOverride.findMany({
+      where: { giveawayId },
+    });
+
+    const existingRoles = new Set(existing.map((o) => o.role));
+    const newRoles = new Set(overrides.map((o) => o.role));
+
+    // Delete overrides that are no longer in the list
+    const toDelete = existing.filter((o) => !newRoles.has(o.role));
+    if (toDelete.length > 0) {
+      await this.prisma.giveawayTicketRuleOverride.deleteMany({
+        where: {
+          giveawayId,
+          role: { in: toDelete.map((o) => o.role) },
+        },
+      });
+    }
+
+    // Upsert the new/updated overrides
+    await Promise.all(
+      overrides.map((override) =>
+        this.prisma.giveawayTicketRuleOverride.upsert({
+          where: {
+            giveawayId_role: {
+              giveawayId,
+              role: override.role,
+            },
+          },
+          update: {
+            ticketsPerUnit: override.ticketsPerUnit,
+          },
+          create: {
+            giveawayId,
+            role: override.role,
+            ticketsPerUnit: override.ticketsPerUnit,
+          },
+        }),
+      ),
+    );
+  }
+
+  /**
+   * Upsert donation rule overrides for a giveaway.
+   * Removes existing overrides not in the new list, creates/updates the ones provided.
+   */
+  async upsertDonationOverrides(
+    giveawayId: string,
+    overrides: CreateGiveawayDonationRuleOverrideDto[] | undefined,
+  ): Promise<void> {
+    if (!overrides) {
+      return;
+    }
+
+    // Get existing overrides
+    const existing = await this.prisma.giveawayDonationRuleOverride.findMany({
+      where: { giveawayId },
+    });
+
+    const existingKeys = new Set(
+      existing.map((o: { platform: ConnectedPlatform; unitType: string }) => `${o.platform}:${o.unitType}`),
+    );
+    const newKeys = new Set(
+      overrides.map((o) => `${o.platform}:${o.unitType}`),
+    );
+
+    // Delete overrides that are no longer in the list
+    const toDelete = existing.filter(
+      (o: { platform: ConnectedPlatform; unitType: string }) => !newKeys.has(`${o.platform}:${o.unitType}`),
+    );
+    if (toDelete.length > 0) {
+      await Promise.all(
+        toDelete.map((o: { giveawayId: string; platform: ConnectedPlatform; unitType: string }) =>
+          this.prisma.giveawayDonationRuleOverride.delete({
+            where: {
+              giveawayId_platform_unitType: {
+                giveawayId: o.giveawayId,
+                platform: o.platform,
+                unitType: o.unitType,
+              },
+            },
+          }),
+        ),
+      );
+    }
+
+    // Upsert the new/updated overrides
+    await Promise.all(
+      overrides.map((override) =>
+        this.prisma.giveawayDonationRuleOverride.upsert({
+          where: {
+            giveawayId_platform_unitType: {
+              giveawayId,
+              platform: override.platform,
+              unitType: override.unitType,
+            },
+          },
+          update: {
+            unitSize: override.unitSize,
+            ticketsPerUnitSize: override.ticketsPerUnitSize,
+          },
+          create: {
+            giveawayId,
+            platform: override.platform,
+            unitType: override.unitType,
+            unitSize: override.unitSize,
+            ticketsPerUnitSize: override.ticketsPerUnitSize,
+          },
+        }),
+      ),
+    );
+  }
 
   /**
    * Create a new giveaway for the authenticated admin user.
@@ -16,10 +230,21 @@ export class GiveawayService {
   async create(userId: string, dto: CreateGiveawayDto): Promise<Giveaway> {
     const status = dto.status || GiveawayStatus.DRAFT;
 
-    // Validate keyword is required for LIVE_KEYWORD type
-    if (dto.type === GiveawayType.LIVE_KEYWORD && !dto.keyword) {
-      throw new BadRequestException('Keyword is required for LIVE_KEYWORD type giveaways');
+    // Validate platforms are stream platforms only
+    this.validatePlatforms(dto.platforms);
+
+    // Validate keyword is required and not empty
+    if (!dto.keyword || dto.keyword.trim().length === 0) {
+      throw new BadRequestException('Keyword is required for all giveaways');
     }
+
+    // Normalize allowedRoles
+    const allowedRoles = this.normalizeAllowedRoles({
+      subsOnly: dto.subsOnly,
+      nonSubsOnly: dto.nonSubsOnly,
+      allowedRoles: dto.allowedRoles,
+      platforms: dto.platforms,
+    });
 
     // Validate donation windows are provided when flags are true
     if (dto.includeBitsDonors && !dto.bitsDonationWindow) {
@@ -28,40 +253,69 @@ export class GiveawayService {
     if (dto.includeGiftSubDonors && !dto.giftSubDonationWindow) {
       throw new BadRequestException('giftSubDonationWindow is required when includeGiftSubDonors is true');
     }
+    if (dto.includeCoinsDonors && !dto.coinsDonationWindow) {
+      throw new BadRequestException('coinsDonationWindow is required when includeCoinsDonors is true');
+    }
+    if (dto.includeSuperchatDonors && !dto.superchatDonationWindow) {
+      throw new BadRequestException('superchatDonationWindow is required when includeSuperchatDonors is true');
+    }
 
     // If creating with OPEN status, check if another OPEN giveaway exists
     if (status === GiveawayStatus.OPEN) {
       await this.checkOnlyOneOpenGiveaway(userId);
     }
 
-    // Create giveaway with ticket rule overrides if provided
-    const giveaway = await this.prisma.giveaway.create({
-      data: {
-        userId,
-        name: dto.name,
-        type: dto.type,
-        status,
-        platforms: dto.platforms,
-        keyword: dto.keyword,
-        includeBitsDonors: dto.includeBitsDonors ?? false,
-        includeGiftSubDonors: dto.includeGiftSubDonors ?? false,
-        bitsDonationWindow: dto.bitsDonationWindow,
-        giftSubDonationWindow: dto.giftSubDonationWindow,
-        ticketRuleOverrides: dto.ticketRuleOverrides
-          ? {
-              create: dto.ticketRuleOverrides.map((override) => ({
-                role: override.role,
-                ticketsPerUnit: override.ticketsPerUnit,
-              })),
-            }
-          : undefined,
-      },
-      include: {
-        ticketRuleOverrides: true,
-      },
+    // Create giveaway with overrides in a transaction
+    const giveaway = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.giveaway.create({
+        data: {
+          userId,
+          name: dto.name,
+          description: dto.description,
+          status,
+          platforms: dto.platforms,
+          keyword: dto.keyword,
+          allowedRoles,
+          includeBitsDonors: dto.includeBitsDonors ?? false,
+          includeGiftSubDonors: dto.includeGiftSubDonors ?? false,
+          includeCoinsDonors: dto.includeCoinsDonors ?? false,
+          includeSuperchatDonors: dto.includeSuperchatDonors ?? false,
+          bitsDonationWindow: dto.bitsDonationWindow,
+          giftSubDonationWindow: dto.giftSubDonationWindow,
+          coinsDonationWindow: dto.coinsDonationWindow,
+          superchatDonationWindow: dto.superchatDonationWindow,
+        },
+      });
+
+      // Create ticket rule overrides if provided
+      if (dto.ticketRuleOverrides && dto.ticketRuleOverrides.length > 0) {
+        await tx.giveawayTicketRuleOverride.createMany({
+          data: dto.ticketRuleOverrides.map((override) => ({
+            giveawayId: created.id,
+            role: override.role,
+            ticketsPerUnit: override.ticketsPerUnit,
+          })),
+        });
+      }
+
+      // Create donation rule overrides if provided
+      if (dto.donationRuleOverrides && dto.donationRuleOverrides.length > 0) {
+        await tx.giveawayDonationRuleOverride.createMany({
+          data: dto.donationRuleOverrides.map((override) => ({
+            giveawayId: created.id,
+            platform: override.platform,
+            unitType: override.unitType,
+            unitSize: override.unitSize,
+            ticketsPerUnitSize: override.ticketsPerUnitSize,
+          })),
+        });
+      }
+
+      return created;
     });
 
-    return giveaway;
+    // Fetch with relations
+    return this.findOne(userId, giveaway.id);
   }
 
   /**
@@ -71,6 +325,10 @@ export class GiveawayService {
     return this.prisma.giveaway.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      include: {
+        ticketRuleOverrides: true,
+        donationRuleOverrides: true,
+      },
     });
   }
 
@@ -85,6 +343,7 @@ export class GiveawayService {
       },
       include: {
         ticketRuleOverrides: true,
+        donationRuleOverrides: true,
       },
     });
 
@@ -103,14 +362,34 @@ export class GiveawayService {
     // Ensure the giveaway exists and belongs to the user
     const existingGiveaway = await this.findOne(userId, id);
 
-    // Validate keyword is required if type is being changed to LIVE_KEYWORD
-    if (dto.type === GiveawayType.LIVE_KEYWORD && !dto.keyword && !existingGiveaway.keyword) {
-      throw new BadRequestException('Keyword is required for LIVE_KEYWORD type giveaways');
+    // Validate platforms if being updated
+    const platforms = dto.platforms ?? (existingGiveaway.platforms as ConnectedPlatform[]);
+    if (dto.platforms) {
+      this.validatePlatforms(dto.platforms);
+    }
+
+    // Validate keyword is required and not empty
+    const keyword = dto.keyword ?? existingGiveaway.keyword;
+    if (!keyword || keyword.trim().length === 0) {
+      throw new BadRequestException('Keyword is required for all giveaways');
+    }
+
+    // Normalize allowedRoles if any role-related fields are being updated
+    let allowedRoles = existingGiveaway.allowedRoles as string[];
+    if (dto.subsOnly !== undefined || dto.nonSubsOnly !== undefined || dto.allowedRoles !== undefined) {
+      allowedRoles = this.normalizeAllowedRoles({
+        subsOnly: dto.subsOnly,
+        nonSubsOnly: dto.nonSubsOnly,
+        allowedRoles: dto.allowedRoles,
+        platforms,
+      });
     }
 
     // Validate donation windows when flags are being set
     const includeBitsDonors = dto.includeBitsDonors ?? existingGiveaway.includeBitsDonors;
     const includeGiftSubDonors = dto.includeGiftSubDonors ?? existingGiveaway.includeGiftSubDonors;
+    const includeCoinsDonors = dto.includeCoinsDonors ?? existingGiveaway.includeCoinsDonors;
+    const includeSuperchatDonors = dto.includeSuperchatDonors ?? existingGiveaway.includeSuperchatDonors;
 
     if (includeBitsDonors && !dto.bitsDonationWindow && !existingGiveaway.bitsDonationWindow) {
       throw new BadRequestException('bitsDonationWindow is required when includeBitsDonors is true');
@@ -118,26 +397,147 @@ export class GiveawayService {
     if (includeGiftSubDonors && !dto.giftSubDonationWindow && !existingGiveaway.giftSubDonationWindow) {
       throw new BadRequestException('giftSubDonationWindow is required when includeGiftSubDonors is true');
     }
+    if (includeCoinsDonors && !dto.coinsDonationWindow && !existingGiveaway.coinsDonationWindow) {
+      throw new BadRequestException('coinsDonationWindow is required when includeCoinsDonors is true');
+    }
+    if (includeSuperchatDonors && !dto.superchatDonationWindow && !existingGiveaway.superchatDonationWindow) {
+      throw new BadRequestException('superchatDonationWindow is required when includeSuperchatDonors is true');
+    }
 
     // If updating status to OPEN, check if another OPEN giveaway exists
     if (dto.status === GiveawayStatus.OPEN) {
       await this.checkOnlyOneOpenGiveaway(userId, id);
     }
 
-    return this.prisma.giveaway.update({
-      where: { id },
-      data: {
-        ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.type !== undefined && { type: dto.type }),
-        ...(dto.status !== undefined && { status: dto.status }),
-        ...(dto.platforms !== undefined && { platforms: dto.platforms }),
-        ...(dto.keyword !== undefined && { keyword: dto.keyword }),
-        ...(dto.includeBitsDonors !== undefined && { includeBitsDonors: dto.includeBitsDonors }),
-        ...(dto.includeGiftSubDonors !== undefined && { includeGiftSubDonors: dto.includeGiftSubDonors }),
-        ...(dto.bitsDonationWindow !== undefined && { bitsDonationWindow: dto.bitsDonationWindow }),
-        ...(dto.giftSubDonationWindow !== undefined && { giftSubDonationWindow: dto.giftSubDonationWindow }),
-      },
+    // Update giveaway and overrides in a transaction
+    await this.prisma.$transaction(async (tx) => {
+      await tx.giveaway.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined && { name: dto.name }),
+          ...(dto.description !== undefined && { description: dto.description }),
+          ...(dto.status !== undefined && { status: dto.status }),
+          ...(dto.platforms !== undefined && { platforms: dto.platforms }),
+          ...(dto.keyword !== undefined && { keyword: dto.keyword }),
+          ...(allowedRoles !== undefined && { allowedRoles }),
+          ...(dto.includeBitsDonors !== undefined && { includeBitsDonors: dto.includeBitsDonors }),
+          ...(dto.includeGiftSubDonors !== undefined && { includeGiftSubDonors: dto.includeGiftSubDonors }),
+          ...(dto.includeCoinsDonors !== undefined && { includeCoinsDonors: dto.includeCoinsDonors }),
+          ...(dto.includeSuperchatDonors !== undefined && { includeSuperchatDonors: dto.includeSuperchatDonors }),
+          ...(dto.bitsDonationWindow !== undefined && { bitsDonationWindow: dto.bitsDonationWindow }),
+          ...(dto.giftSubDonationWindow !== undefined && { giftSubDonationWindow: dto.giftSubDonationWindow }),
+          ...(dto.coinsDonationWindow !== undefined && { coinsDonationWindow: dto.coinsDonationWindow }),
+          ...(dto.superchatDonationWindow !== undefined && { superchatDonationWindow: dto.superchatDonationWindow }),
+        },
+      });
+
+      // Upsert ticket rule overrides if provided
+      if (dto.ticketRuleOverrides !== undefined) {
+        // Get existing overrides
+        const existing = await tx.giveawayTicketRuleOverride.findMany({
+          where: { giveawayId: id },
+        });
+
+        const existingRoles = new Set(existing.map((o) => o.role));
+        const newRoles = new Set(dto.ticketRuleOverrides.map((o) => o.role));
+
+        // Delete overrides that are no longer in the list
+        const toDelete = existing.filter((o) => !newRoles.has(o.role));
+        if (toDelete.length > 0) {
+          await tx.giveawayTicketRuleOverride.deleteMany({
+            where: {
+              giveawayId: id,
+              role: { in: toDelete.map((o) => o.role) },
+            },
+          });
+        }
+
+        // Upsert the new/updated overrides
+        await Promise.all(
+          dto.ticketRuleOverrides.map((override) =>
+            tx.giveawayTicketRuleOverride.upsert({
+              where: {
+                giveawayId_role: {
+                  giveawayId: id,
+                  role: override.role,
+                },
+              },
+              update: {
+                ticketsPerUnit: override.ticketsPerUnit,
+              },
+              create: {
+                giveawayId: id,
+                role: override.role,
+                ticketsPerUnit: override.ticketsPerUnit,
+              },
+            }),
+          ),
+        );
+      }
+
+      // Upsert donation rule overrides if provided
+      if (dto.donationRuleOverrides !== undefined) {
+        // Get existing overrides
+        const existing = await tx.giveawayDonationRuleOverride.findMany({
+          where: { giveawayId: id },
+        });
+
+        const existingKeys = new Set(
+          existing.map((o: { platform: ConnectedPlatform; unitType: string }) => `${o.platform}:${o.unitType}`),
+        );
+        const newKeys = new Set(
+          dto.donationRuleOverrides.map((o) => `${o.platform}:${o.unitType}`),
+        );
+
+        // Delete overrides that are no longer in the list
+        const toDelete = existing.filter(
+          (o: { platform: ConnectedPlatform; unitType: string }) => !newKeys.has(`${o.platform}:${o.unitType}`),
+        );
+        if (toDelete.length > 0) {
+          await Promise.all(
+            toDelete.map((o: { giveawayId: string; platform: ConnectedPlatform; unitType: string }) =>
+              tx.giveawayDonationRuleOverride.delete({
+                where: {
+                  giveawayId_platform_unitType: {
+                    giveawayId: o.giveawayId,
+                    platform: o.platform,
+                    unitType: o.unitType,
+                  },
+                },
+              }),
+            ),
+          );
+        }
+
+        // Upsert the new/updated overrides
+        await Promise.all(
+          dto.donationRuleOverrides.map((override) =>
+            tx.giveawayDonationRuleOverride.upsert({
+              where: {
+                giveawayId_platform_unitType: {
+                  giveawayId: id,
+                  platform: override.platform,
+                  unitType: override.unitType,
+                },
+              },
+              update: {
+                unitSize: override.unitSize,
+                ticketsPerUnitSize: override.ticketsPerUnitSize,
+              },
+              create: {
+                giveawayId: id,
+                platform: override.platform,
+                unitType: override.unitType,
+                unitSize: override.unitSize,
+                ticketsPerUnitSize: override.ticketsPerUnitSize,
+              },
+            }),
+          ),
+        );
+      }
     });
+
+    return this.findOne(userId, id);
   }
 
   /**
@@ -157,7 +557,7 @@ export class GiveawayService {
 
     if (existingOpenGiveaway) {
       throw new BadRequestException(
-        `You already have an open giveaway (${existingOpenGiveaway.name}). Only one giveaway can be OPEN at a time. Please close it first.`
+        `You already have an open giveaway (${existingOpenGiveaway.name}). Only one giveaway can be OPEN at a time. Please close it first.`,
       );
     }
   }
@@ -168,9 +568,9 @@ export class GiveawayService {
    * This method uses:
    * 1. GiveawayTicketRuleOverride if exists (giveaway-specific overrides)
    * 2. TicketGlobalRule (default rules for the admin user)
-   * 3. TicketGlobalDonationRule for donation-based tickets (BITS and GIFT_SUB)
+   * 3. TicketGlobalDonationRule / GiveawayDonationRuleOverride for donation-based tickets
    * 
-   * Note: The donation window (bitsDonationWindow/giftSubDonationWindow) is ignored for now.
+   * Note: The donation window is ignored for now.
    * This will be used when integrating with the actual source of bits/gifts data.
    */
   async calculateTicketsForParticipant(input: {
@@ -192,12 +592,18 @@ export class GiveawayService {
     // 1. Calculate base tickets from role (check override first, then global rule)
     let baseTickets = 0;
 
+    // Convert platform-specific NON_SUB (TWITCH_NON_SUB, KICK_NON_SUB, YOUTUBE_NON_SUB) to NON_SUB for database lookup
+    let normalizedRole = input.role;
+    if (input.role === 'TWITCH_NON_SUB' || input.role === 'KICK_NON_SUB' || input.role === 'YOUTUBE_NON_SUB') {
+      normalizedRole = 'NON_SUB';
+    }
+
     // Check for giveaway-specific override
     const override = await this.prisma.giveawayTicketRuleOverride.findUnique({
       where: {
         giveawayId_role: {
           giveawayId: input.giveawayId,
-          role: input.role,
+          role: input.role, // Use original role for override lookup (overrides use platform-specific format)
         },
       },
     });
@@ -205,13 +611,13 @@ export class GiveawayService {
     if (override) {
       baseTickets = override.ticketsPerUnit;
     } else {
-      // Use global rule (must include platform, especially for NON_SUB)
+      // Use global rule (platform is required, use normalized role for database lookup)
       const globalRule = await this.prisma.ticketGlobalRule.findUnique({
         where: {
           userId_platform_role: {
             userId: input.adminUserId,
             platform: input.platform,
-            role: input.role,
+            role: normalizedRole, // Use normalized role (NON_SUB) for database lookup
           },
         },
       });
@@ -223,41 +629,73 @@ export class GiveawayService {
 
     // 2. Calculate bits tickets (if enabled)
     let bitsTickets = 0;
-    // TODO: Use bitsDonationWindow when integrating with actual bits data source
     if (giveaway.includeBitsDonors && input.totalBits && input.totalBits > 0) {
-      const bitsRule = await this.prisma.ticketGlobalDonationRule.findUnique({
+      // Check for giveaway-specific override first
+      const donationOverride = await this.prisma.giveawayDonationRuleOverride.findUnique({
         where: {
-          userId_platform_unitType: {
-            userId: input.adminUserId,
+          giveawayId_platform_unitType: {
+            giveawayId: input.giveawayId,
             platform: input.platform,
             unitType: 'BITS',
           },
         },
       });
 
-      if (bitsRule) {
-        // Calculate tickets: (totalBits / unitSize) * ticketsPerUnitSize
-        bitsTickets = Math.floor((input.totalBits / bitsRule.unitSize) * bitsRule.ticketsPerUnitSize);
+      if (donationOverride) {
+        bitsTickets = Math.floor(
+          (input.totalBits / donationOverride.unitSize) * donationOverride.ticketsPerUnitSize,
+        );
+      } else {
+        // Use global rule
+        const bitsRule = await this.prisma.ticketGlobalDonationRule.findUnique({
+          where: {
+            userId_platform_unitType: {
+              userId: input.adminUserId,
+              platform: input.platform,
+              unitType: 'BITS',
+            },
+          },
+        });
+
+        if (bitsRule) {
+          bitsTickets = Math.floor((input.totalBits / bitsRule.unitSize) * bitsRule.ticketsPerUnitSize);
+        }
       }
     }
 
     // 3. Calculate gift sub tickets (if enabled)
     let giftTickets = 0;
-    // TODO: Use giftSubDonationWindow when integrating with actual gift subs data source
     if (giveaway.includeGiftSubDonors && input.totalGiftSubs && input.totalGiftSubs > 0) {
-      const giftRule = await this.prisma.ticketGlobalDonationRule.findUnique({
+      // Check for giveaway-specific override first
+      const donationOverride = await this.prisma.giveawayDonationRuleOverride.findUnique({
         where: {
-          userId_platform_unitType: {
-            userId: input.adminUserId,
+          giveawayId_platform_unitType: {
+            giveawayId: input.giveawayId,
             platform: input.platform,
             unitType: 'GIFT_SUB',
           },
         },
       });
 
-      if (giftRule) {
-        // Calculate tickets: (totalGiftSubs / unitSize) * ticketsPerUnitSize
-        giftTickets = Math.floor((input.totalGiftSubs / giftRule.unitSize) * giftRule.ticketsPerUnitSize);
+      if (donationOverride) {
+        giftTickets = Math.floor(
+          (input.totalGiftSubs / donationOverride.unitSize) * donationOverride.ticketsPerUnitSize,
+        );
+      } else {
+        // Use global rule
+        const giftRule = await this.prisma.ticketGlobalDonationRule.findUnique({
+          where: {
+            userId_platform_unitType: {
+              userId: input.adminUserId,
+              platform: input.platform,
+              unitType: 'GIFT_SUB',
+            },
+          },
+        });
+
+        if (giftRule) {
+          giftTickets = Math.floor((input.totalGiftSubs / giftRule.unitSize) * giftRule.ticketsPerUnitSize);
+        }
       }
     }
 
@@ -273,4 +711,3 @@ export class GiveawayService {
     };
   }
 }
-

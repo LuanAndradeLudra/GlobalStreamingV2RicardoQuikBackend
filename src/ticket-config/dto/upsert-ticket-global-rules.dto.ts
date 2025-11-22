@@ -14,3 +14,4 @@ export class UpsertTicketGlobalRulesDto {
   rules: CreateTicketGlobalRuleDto[];
 }
 
+

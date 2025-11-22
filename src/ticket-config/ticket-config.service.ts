@@ -13,12 +13,16 @@ export class TicketConfigService {
    * These rules serve as defaults for all giveaways.
    * 
    * Global ticket rules define tickets based on the user's base subscription status.
-   * NON_SUB must be platform-specific (e.g., NON_SUB for Twitch, NON_SUB for Kick).
    * Donation rules define extra ticket increments based on quantity of bits/coins/gifts.
    */
   async getGlobalConfig(userId: string): Promise<{
-    rules: TicketGlobalRule[];
-    donationRules: TicketGlobalDonationRule[];
+    rules: { platform: string; role: string; ticketsPerUnit: number }[];
+    donationRules: {
+      platform: string;
+      unitType: string;
+      unitSize: number;
+      ticketsPerUnitSize: number;
+    }[];
   }> {
     const [rules, donationRules] = await Promise.all([
       this.prisma.ticketGlobalRule.findMany({
@@ -31,28 +35,50 @@ export class TicketConfigService {
       }),
     ]);
 
-    return { rules, donationRules };
+    return {
+      rules: rules.map((r) => ({
+        platform: r.platform,
+        // Transform NON_SUB + platform to platform-specific format (TWITCH_NON_SUB, KICK_NON_SUB, YOUTUBE_NON_SUB)
+        role: r.role === 'NON_SUB' ? `${r.platform}_NON_SUB` : r.role,
+        ticketsPerUnit: r.ticketsPerUnit,
+      })),
+      donationRules: donationRules.map((dr) => ({
+        platform: dr.platform,
+        unitType: dr.unitType,
+        unitSize: dr.unitSize,
+        ticketsPerUnitSize: dr.ticketsPerUnitSize,
+      })),
+    };
   }
 
   /**
    * Upsert (create or update) global ticket rules for a user.
    * These rules define tickets based on the user's base subscription status.
    * Roles represent the "base state" of the user: non-sub, twitch tier, kick sub, youtube sub.
-   * NON_SUB must be platform-specific (e.g., NON_SUB for Twitch, NON_SUB for Kick).
    * Gift subs are handled in TicketGlobalDonationRule, not here.
    * These are default rules applied to all giveaways.
+   * 
+   * Accepts platform-specific NON_SUB formats (TWITCH_NON_SUB, KICK_NON_SUB, YOUTUBE_NON_SUB)
+   * and converts them to NON_SUB + platform for storage.
    */
   async upsertGlobalRules(
     userId: string,
     rules: CreateTicketGlobalRuleDto[],
   ): Promise<TicketGlobalRule[]> {
-    const upsertPromises = rules.map((rule) =>
-      this.prisma.ticketGlobalRule.upsert({
+    const upsertPromises = rules.map((rule) => {
+      // Convert platform-specific NON_SUB (TWITCH_NON_SUB, KICK_NON_SUB, YOUTUBE_NON_SUB) to NON_SUB
+      // The platform is already specified in rule.platform
+      let normalizedRole = rule.role;
+      if (rule.role === 'TWITCH_NON_SUB' || rule.role === 'KICK_NON_SUB' || rule.role === 'YOUTUBE_NON_SUB') {
+        normalizedRole = 'NON_SUB';
+      }
+
+      return this.prisma.ticketGlobalRule.upsert({
         where: {
           userId_platform_role: {
             userId,
             platform: rule.platform,
-            role: rule.role,
+            role: normalizedRole,
           },
         },
         update: {
@@ -61,11 +87,11 @@ export class TicketConfigService {
         create: {
           userId,
           platform: rule.platform,
-          role: rule.role,
+          role: normalizedRole,
           ticketsPerUnit: rule.ticketsPerUnit,
         },
-      }),
-    );
+      });
+    });
 
     return Promise.all(upsertPromises);
   }

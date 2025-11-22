@@ -14,7 +14,7 @@ import { UpsertTicketGlobalDonationRulesDto } from './dto/upsert-ticket-global-d
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { User, UserRole, TicketGlobalRule, TicketGlobalDonationRule } from '@prisma/client';
+import { User, UserRole, TicketGlobalRule, TicketGlobalDonationRule, ConnectedPlatform } from '@prisma/client';
 
 @ApiTags('ticket-config')
 @Controller('ticket-config')
@@ -44,12 +44,9 @@ export class TicketConfigController {
           items: {
             type: 'object',
             properties: {
-              id: { type: 'string' },
-              userId: { type: 'string' },
+              platform: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
               role: { type: 'string', description: 'Base subscription status role (e.g., "NON_SUB", "TWITCH_TIER_1", "KICK_SUB")' },
               ticketsPerUnit: { type: 'number' },
-              createdAt: { type: 'string', format: 'date-time' },
-              updatedAt: { type: 'string', format: 'date-time' },
             },
           },
         },
@@ -58,14 +55,10 @@ export class TicketConfigController {
           items: {
             type: 'object',
             properties: {
-              id: { type: 'string' },
-              userId: { type: 'string' },
               platform: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
-              unitType: { type: 'string', description: 'Type of donation unit (e.g., "BITS", "GIFT_SUB", "KICK_COINS")' },
+              unitType: { type: 'string', description: 'Type of donation unit (e.g., "BITS", "GIFT_SUB", "KICK_COINS", "SUPERCHAT")' },
               unitSize: { type: 'number', description: 'Size of the "block" of units (e.g., 100 bits, 1 gift)' },
               ticketsPerUnitSize: { type: 'number', description: 'Tickets per block (e.g., 1 ticket per 100 bits, 4 tickets per gift)' },
-              createdAt: { type: 'string', format: 'date-time' },
-              updatedAt: { type: 'string', format: 'date-time' },
             },
           },
         },
@@ -83,8 +76,13 @@ export class TicketConfigController {
   async getGlobalConfig(
     @CurrentUser() user: User,
   ): Promise<{
-    rules: TicketGlobalRule[];
-    donationRules: TicketGlobalDonationRule[];
+    rules: { platform: string; role: string; ticketsPerUnit: number }[];
+    donationRules: {
+      platform: string;
+      unitType: string;
+      unitSize: number;
+      ticketsPerUnitSize: number;
+    }[];
   }> {
     return this.ticketConfigService.getGlobalConfig(user.id);
   }
@@ -162,9 +160,10 @@ export class TicketConfigController {
         properties: {
           id: { type: 'string' },
           userId: { type: 'string' },
-          platform: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
-          unitType: { type: 'string' },
-          unitsPerTicket: { type: 'number' },
+              platform: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
+              unitType: { type: 'string' },
+              unitSize: { type: 'number' },
+              ticketsPerUnitSize: { type: 'number' },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },
         },

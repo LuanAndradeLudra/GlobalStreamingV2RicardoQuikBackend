@@ -1,7 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsString, IsArray, IsOptional, ArrayMinSize, IsBoolean, ValidateIf } from 'class-validator';
-import { GiveawayType, ConnectedPlatform, DonationWindow } from '@prisma/client';
+import { IsEnum, IsString, IsArray, IsOptional, ArrayMinSize, IsBoolean, ValidateIf, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ConnectedPlatform, DonationWindow } from '@prisma/client';
 import { CreateGiveawayTicketRuleOverrideDto } from './create-giveaway-ticket-rule-override.dto';
+import { CreateGiveawayDonationRuleOverrideDto } from './create-giveaway-donation-rule-override.dto';
 
 export class CreateGiveawayDto {
   @ApiProperty({
@@ -12,32 +14,13 @@ export class CreateGiveawayDto {
   name: string;
 
   @ApiProperty({
-    description: 'Type of giveaway',
-    enum: GiveawayType,
-    example: GiveawayType.LIVE_KEYWORD,
-  })
-  @IsEnum(GiveawayType)
-  type: GiveawayType;
-
-  @ApiProperty({
-    description: 'Platforms where the giveaway will run',
-    enum: ConnectedPlatform,
-    isArray: true,
-    example: [ConnectedPlatform.TWITCH, ConnectedPlatform.KICK],
-  })
-  @IsArray()
-  @IsEnum(ConnectedPlatform, { each: true })
-  @ArrayMinSize(1)
-  platforms: ConnectedPlatform[];
-
-  @ApiProperty({
-    description: 'Keyword for LIVE_KEYWORD type giveaways (required if type is LIVE_KEYWORD)',
-    example: '!enter',
+    description: 'Description of the giveaway',
+    example: 'A summer giveaway for all subscribers',
     required: false,
   })
-  @ValidateIf((o) => o.type === GiveawayType.LIVE_KEYWORD)
+  @IsOptional()
   @IsString()
-  keyword?: string;
+  description?: string;
 
   @ApiProperty({
     description: 'Initial status of the giveaway (defaults to DRAFT if not provided)',
@@ -49,6 +32,67 @@ export class CreateGiveawayDto {
   @IsEnum(['DRAFT', 'OPEN'])
   status?: 'DRAFT' | 'OPEN';
 
+  @ApiProperty({
+    description: 'Platforms where the giveaway will run (stream platforms only: TWITCH, KICK, YOUTUBE)',
+    enum: ConnectedPlatform,
+    isArray: true,
+    example: [ConnectedPlatform.TWITCH, ConnectedPlatform.KICK],
+  })
+  @IsArray()
+  @IsEnum(ConnectedPlatform, { each: true })
+  @ArrayMinSize(1)
+  platforms: ConnectedPlatform[];
+
+  @ApiProperty({
+    description: 'Keyword for the giveaway (required for all STREAM giveaways)',
+    example: '!enter',
+  })
+  @IsString()
+  keyword: string;
+
+  // Step 2: Roles allowed
+  @ApiProperty({
+    description: 'Shortcut: if true, expands to all subscription roles for selected platforms',
+    example: false,
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  subsOnly?: boolean;
+
+  @ApiProperty({
+    description: 'Shortcut: if true, sets allowedRoles to ["NON_SUB"]',
+    example: false,
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  nonSubsOnly?: boolean;
+
+  @ApiProperty({
+    description: 'Array of allowed roles (e.g., ["NON_SUB", "TWITCH_TIER_1", "KICK_SUB"])',
+    type: [String],
+    example: ['NON_SUB', 'TWITCH_TIER_1'],
+    required: false,
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowedRoles?: string[];
+
+  // Step 3: Ticket rule overrides
+  @ApiProperty({
+    description: 'Optional ticket rule overrides for this giveaway',
+    type: [CreateGiveawayTicketRuleOverrideDto],
+    required: false,
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateGiveawayTicketRuleOverrideDto)
+  ticketRuleOverrides?: CreateGiveawayTicketRuleOverrideDto[];
+
+  // Step 4: Donations
   @ApiProperty({
     description: 'Include bits donors in ticket calculation',
     example: false,
@@ -66,6 +110,24 @@ export class CreateGiveawayDto {
   @IsOptional()
   @IsBoolean()
   includeGiftSubDonors?: boolean;
+
+  @ApiProperty({
+    description: 'Include coins donors (e.g., KICK_COINS) in ticket calculation',
+    example: false,
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  includeCoinsDonors?: boolean;
+
+  @ApiProperty({
+    description: 'Include superchat donors in ticket calculation',
+    example: false,
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  includeSuperchatDonors?: boolean;
 
   @ApiProperty({
     description: 'Time window for bits donations (required if includeBitsDonors is true)',
@@ -90,12 +152,37 @@ export class CreateGiveawayDto {
   giftSubDonationWindow?: DonationWindow;
 
   @ApiProperty({
-    description: 'Optional ticket rule overrides for this giveaway',
-    type: [CreateGiveawayTicketRuleOverrideDto],
+    description: 'Time window for coins donations (required if includeCoinsDonors is true)',
+    enum: DonationWindow,
+    example: DonationWindow.DAILY,
+    required: false,
+  })
+  @ValidateIf((o) => o.includeCoinsDonors === true)
+  @IsOptional()
+  @IsEnum(DonationWindow)
+  coinsDonationWindow?: DonationWindow;
+
+  @ApiProperty({
+    description: 'Time window for superchat donations (required if includeSuperchatDonors is true)',
+    enum: DonationWindow,
+    example: DonationWindow.DAILY,
+    required: false,
+  })
+  @ValidateIf((o) => o.includeSuperchatDonors === true)
+  @IsOptional()
+  @IsEnum(DonationWindow)
+  superchatDonationWindow?: DonationWindow;
+
+  // Step 4: Donation rule overrides
+  @ApiProperty({
+    description: 'Optional donation rule overrides for this giveaway',
+    type: [CreateGiveawayDonationRuleOverrideDto],
     required: false,
   })
   @IsOptional()
   @IsArray()
-  ticketRuleOverrides?: CreateGiveawayTicketRuleOverrideDto[];
+  @ValidateNested({ each: true })
+  @Type(() => CreateGiveawayDonationRuleOverrideDto)
+  donationRuleOverrides?: CreateGiveawayDonationRuleOverrideDto[];
 }
 

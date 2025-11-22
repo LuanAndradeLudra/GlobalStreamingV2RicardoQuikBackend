@@ -34,8 +34,10 @@ export class GiveawayController {
     description:
       'Creates a new giveaway for the authenticated admin user. ' +
       'Only one giveaway can be OPEN at a time per admin. Returns error 400 if trying to create OPEN when another already exists. ' +
-      'Keyword is required for LIVE_KEYWORD type. ' +
-      'Donation windows are required when includeBitsDonors or includeGiftSubDonors are true.',
+      'Platforms must be stream platforms only (TWITCH, KICK, YOUTUBE). ' +
+      'Keyword is required for all giveaways. ' +
+      'Use subsOnly or nonSubsOnly shortcuts, or provide allowedRoles array. ' +
+      'Donation windows are required when corresponding donation flags are true.',
   })
   @ApiResponse({
     status: 201,
@@ -99,13 +101,49 @@ export class GiveawayController {
           id: { type: 'string' },
           userId: { type: 'string' },
           name: { type: 'string' },
-          type: { type: 'string', enum: ['LIVE_KEYWORD', 'SUBS_ONLY', 'DONATION_ONLY', 'INSTAGRAM_COMMENTS', 'TIKTOK_COMMENTS', 'MANUAL'] },
+          description: { type: 'string', nullable: true },
           status: { type: 'string', enum: ['DRAFT', 'OPEN', 'CLOSED'] },
           platforms: {
             type: 'array',
-            items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
+            items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE'] },
           },
-          keyword: { type: 'string', nullable: true },
+          keyword: { type: 'string' },
+          allowedRoles: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+          includeBitsDonors: { type: 'boolean' },
+          includeGiftSubDonors: { type: 'boolean' },
+          includeCoinsDonors: { type: 'boolean' },
+          includeSuperchatDonors: { type: 'boolean' },
+          bitsDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
+          giftSubDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
+          coinsDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
+          superchatDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
+          ticketRuleOverrides: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                role: { type: 'string' },
+                ticketsPerUnit: { type: 'number' },
+              },
+            },
+          },
+          donationRuleOverrides: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                platform: { type: 'string' },
+                unitType: { type: 'string' },
+                unitSize: { type: 'number' },
+                ticketsPerUnitSize: { type: 'number' },
+              },
+            },
+          },
           configOverrideId: { type: 'string', nullable: true },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },
@@ -140,14 +178,17 @@ export class GiveawayController {
         id: { type: 'string' },
         userId: { type: 'string' },
         name: { type: 'string' },
-        type: { type: 'string', enum: ['LIVE_KEYWORD', 'SUBS_ONLY', 'DONATION_ONLY', 'INSTAGRAM_COMMENTS', 'TIKTOK_COMMENTS', 'MANUAL'] },
+        description: { type: 'string', nullable: true },
         status: { type: 'string', enum: ['DRAFT', 'OPEN', 'CLOSED'] },
         platforms: {
           type: 'array',
-          items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
+          items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE'] },
         },
-        keyword: { type: 'string', nullable: true },
-        configOverrideId: { type: 'string', nullable: true },
+        keyword: { type: 'string' },
+        allowedRoles: {
+          type: 'array',
+          items: { type: 'string' },
+        },
         createdAt: { type: 'string', format: 'date-time' },
         updatedAt: { type: 'string', format: 'date-time' },
       },
@@ -177,8 +218,11 @@ export class GiveawayController {
   @ApiOperation({
     summary: 'Update a giveaway',
     description:
-      'Updates a giveaway. Can update name, type, keyword, platforms, status, donation flags, and donation windows. ' +
-      'Only one giveaway can be OPEN at a time per admin. Returns error 400 if trying to set OPEN when another already exists.',
+      'Updates a giveaway. Can update name, description, keyword, platforms, status, allowedRoles, donation flags, donation windows, and overrides. ' +
+      'Only one giveaway can be OPEN at a time per admin. Returns error 400 if trying to set OPEN when another already exists. ' +
+      'Platforms must be stream platforms only (TWITCH, KICK, YOUTUBE). ' +
+      'Keyword is required for all giveaways. ' +
+      'Use subsOnly or nonSubsOnly shortcuts, or provide allowedRoles array.',
   })
   @ApiResponse({
     status: 200,

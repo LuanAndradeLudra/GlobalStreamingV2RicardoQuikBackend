@@ -24,15 +24,6 @@ enum ConnectedPlatform {
   TIKTOK
 }
 
-enum GiveawayType {
-  LIVE_KEYWORD
-  SUBS_ONLY
-  DONATION_ONLY
-  INSTAGRAM_COMMENTS
-  TIKTOK_COMMENTS
-  MANUAL
-}
-
 enum GiveawayStatus {
   DRAFT
   OPEN
@@ -94,9 +85,7 @@ model TicketGlobalRule {
   ticketsPerUnit Int
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@unique([userId, platform, role])
 }
 
@@ -122,61 +111,76 @@ model TicketGlobalDonationRule {
 }
 
 model Giveaway {
-  id                    String                      @id @default(uuid())
-  userId                String
-  name                  String
-  type                  GiveawayType
-  status                GiveawayStatus
-  platforms             Json                        // Array of ConnectedPlatform (TWITCH/KICK/YOUTUBE/INSTAGRAM/TIKTOK)
-  keyword               String?
+  id        String          @id @default(uuid())
+  userId    String
+  name      String
+  description String?
+  status    GiveawayStatus
+  platforms Json            // Array<ConnectedPlatform> (TWITCH/KICK/YOUTUBE)
+  keyword   String          // OBRIGATÓRIA (STREAMS)
 
-  // Configs de doação específicas desse sorteio
-  includeBitsDonors     Boolean                     @default(false)
-  includeGiftSubDonors  Boolean                     @default(false)
-  bitsDonationWindow    DonationWindow?
-  giftSubDonationWindow DonationWindow?
+  // filtros de elegibilidade (wizard step 2)
+  allowedRoles Json         // Array<string> das roles permitidas (ex.: ["NON_SUB","TWITCH_TIER_1",...])
 
-  configOverrideId      String?
-  createdAt             DateTime                    @default(now())
-  updatedAt             DateTime                    @updatedAt
+  // doações por sorteio (wizard step 4)
+  includeBitsDonors      Boolean        @default(false)
+  includeGiftSubDonors   Boolean        @default(false)
+  includeCoinsDonors     Boolean        @default(false) // ex.: KICK_COINS
+  includeSuperchatDonors Boolean        @default(false)
+  bitsDonationWindow     DonationWindow?
+  giftSubDonationWindow  DonationWindow?
+  coinsDonationWindow    DonationWindow?
+  superchatDonationWindow DonationWindow?
 
-  user                  User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ticketRuleOverrides   GiveawayTicketRuleOverride[]
-  participants          GiveawayParticipant[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user                 User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketRuleOverrides  GiveawayTicketRuleOverride[]
+  donationRuleOverrides GiveawayDonationRuleOverride[]
+  participants         GiveawayParticipant[]
 
   @@index([userId, status])
 }
 
 model GiveawayTicketRuleOverride {
-  id              String            @id @default(uuid())
-  giveawayId      String
-  role            String            // mesma ideia de TicketGlobalRule.role (NON_SUB, TWITCH_TIER_1, etc.)
-  ticketsPerUnit  Int
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-
-  giveaway        Giveaway          @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
-
+  id             String   @id @default(uuid())
+  giveawayId     String
+  role           String   // mesma semântica do TicketGlobalRule.role
+  ticketsPerUnit Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  giveaway       Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
   @@unique([giveawayId, role])
 }
 
+model GiveawayDonationRuleOverride {
+  id                 String            @id @default(uuid())
+  giveawayId         String
+  platform           ConnectedPlatform
+  unitType           String            // "BITS" | "GIFT_SUB" | "KICK_COINS" | "SUPERCHAT"
+  unitSize           Int
+  ticketsPerUnitSize Int
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  giveaway           Giveaway          @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+  @@unique([giveawayId, platform, unitType])
+}
+
 model GiveawayParticipant {
-  id              String            @id @default(uuid())
-  giveawayId      String
-  platform        ConnectedPlatform
-  externalUserId  String
-  username        String
-  isSub           Boolean
-  subTier         Int?
-  isGiftSubDonor  Boolean
-  donationAmount  Int?              // total de "unidades" (ex: bits/coins) considerados pra esse sorteio
-  tickets         Int
-  sourceDetails   Json?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-
-  giveaway        Giveaway          @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
-
+  id             String             @id @default(uuid())
+  giveawayId     String
+  platform       ConnectedPlatform
+  externalUserId String
+  username       String
+  isSub          Boolean
+  subTier        Int?
+  donationAmount Int?               // total de "unidades" (ex.: bits) considerados pra esse sorteio (se aplicável)
+  tickets        Int
+  sourceDetails  Json?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  giveaway       Giveaway          @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
   @@index([giveawayId])
   @@index([giveawayId, platform, externalUserId])
 }
