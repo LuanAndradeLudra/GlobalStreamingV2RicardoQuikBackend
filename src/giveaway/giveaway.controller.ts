@@ -183,7 +183,6 @@ export class GiveawayController {
               },
             },
           },
-          configOverrideId: { type: 'string', nullable: true },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },
         },

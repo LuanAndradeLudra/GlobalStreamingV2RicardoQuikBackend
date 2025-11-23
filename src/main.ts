@@ -57,7 +57,7 @@ async function bootstrap() {
   const port = configService.get<number>('PORT') ?? 3000;
   await app.listen(port);
   console.log(`🚀 API is running on port ${port}`);
-  console.log(`📚 Swagger documentation available at ${isDevelopment ? 'http://localhost:3000/api' : `http://localhost:${port}/api`}`);
+  console.log(`📚 Swagger documentation available at ${isDevelopment ? `http://localhost:${port}/api` : frontendUrl}/api`);
   console.log(`🌐 CORS enabled for: ${isDevelopment ? 'localhost origins' : frontendUrl}`);
 }
 
