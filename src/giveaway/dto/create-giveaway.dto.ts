@@ -1,9 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsString, IsArray, IsOptional, ArrayMinSize, IsBoolean, ValidateIf, ValidateNested } from 'class-validator';
+import { IsEnum, IsString, IsArray, IsOptional, ArrayMinSize, IsBoolean, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ConnectedPlatform, DonationWindow } from '@prisma/client';
+import { ConnectedPlatform } from '@prisma/client';
 import { CreateGiveawayTicketRuleOverrideDto } from './create-giveaway-ticket-rule-override.dto';
 import { CreateGiveawayDonationRuleOverrideDto } from './create-giveaway-donation-rule-override.dto';
+import { CreateGiveawayDonationConfigDto } from './create-giveaway-donation-config.dto';
 
 export class CreateGiveawayDto {
   @ApiProperty({
@@ -92,86 +93,17 @@ export class CreateGiveawayDto {
   @Type(() => CreateGiveawayTicketRuleOverrideDto)
   ticketRuleOverrides?: CreateGiveawayTicketRuleOverrideDto[];
 
-  // Step 4: Donations
+  // Step 5: Donations configuration (pivot table)
   @ApiProperty({
-    description: 'Include bits donors in ticket calculation',
-    example: false,
+    description: 'Donation configurations for this giveaway (platform-specific)',
+    type: [CreateGiveawayDonationConfigDto],
     required: false,
   })
   @IsOptional()
-  @IsBoolean()
-  includeBitsDonors?: boolean;
-
-  @ApiProperty({
-    description: 'Include gift sub donors in ticket calculation',
-    example: false,
-    required: false,
-  })
-  @IsOptional()
-  @IsBoolean()
-  includeGiftSubDonors?: boolean;
-
-  @ApiProperty({
-    description: 'Include coins donors (e.g., KICK_COINS) in ticket calculation',
-    example: false,
-    required: false,
-  })
-  @IsOptional()
-  @IsBoolean()
-  includeCoinsDonors?: boolean;
-
-  @ApiProperty({
-    description: 'Include superchat donors in ticket calculation',
-    example: false,
-    required: false,
-  })
-  @IsOptional()
-  @IsBoolean()
-  includeSuperchatDonors?: boolean;
-
-  @ApiProperty({
-    description: 'Time window for bits donations (required if includeBitsDonors is true)',
-    enum: DonationWindow,
-    example: DonationWindow.DAILY,
-    required: false,
-  })
-  @ValidateIf((o) => o.includeBitsDonors === true)
-  @IsOptional()
-  @IsEnum(DonationWindow)
-  bitsDonationWindow?: DonationWindow;
-
-  @ApiProperty({
-    description: 'Time window for gift sub donations (required if includeGiftSubDonors is true)',
-    enum: DonationWindow,
-    example: DonationWindow.WEEKLY,
-    required: false,
-  })
-  @ValidateIf((o) => o.includeGiftSubDonors === true)
-  @IsOptional()
-  @IsEnum(DonationWindow)
-  giftSubDonationWindow?: DonationWindow;
-
-  @ApiProperty({
-    description: 'Time window for coins donations (required if includeCoinsDonors is true)',
-    enum: DonationWindow,
-    example: DonationWindow.DAILY,
-    required: false,
-  })
-  @ValidateIf((o) => o.includeCoinsDonors === true)
-  @IsOptional()
-  @IsEnum(DonationWindow)
-  coinsDonationWindow?: DonationWindow;
-
-  @ApiProperty({
-    description: 'Time window for superchat donations (required if includeSuperchatDonors is true)',
-    enum: DonationWindow,
-    example: DonationWindow.DAILY,
-    required: false,
-  })
-  @ValidateIf((o) => o.includeSuperchatDonors === true)
-  @IsOptional()
-  @IsEnum(DonationWindow)
-  superchatDonationWindow?: DonationWindow;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateGiveawayDonationConfigDto)
+  donationConfigs?: CreateGiveawayDonationConfigDto[];
 
   // Step 4: Donation rule overrides
   @ApiProperty({

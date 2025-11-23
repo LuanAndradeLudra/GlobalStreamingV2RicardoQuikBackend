@@ -122,22 +122,13 @@ model Giveaway {
   // filtros de elegibilidade (wizard step 2)
   allowedRoles Json         // Array<string> das roles permitidas (ex.: ["NON_SUB","TWITCH_TIER_1",...])
 
-  // doações por sorteio (wizard step 4)
-  includeBitsDonors      Boolean        @default(false)
-  includeGiftSubDonors   Boolean        @default(false)
-  includeCoinsDonors     Boolean        @default(false) // ex.: KICK_COINS
-  includeSuperchatDonors Boolean        @default(false)
-  bitsDonationWindow     DonationWindow?
-  giftSubDonationWindow  DonationWindow?
-  coinsDonationWindow    DonationWindow?
-  superchatDonationWindow DonationWindow?
-
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   user                 User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
   ticketRuleOverrides  GiveawayTicketRuleOverride[]
   donationRuleOverrides GiveawayDonationRuleOverride[]
+  donationConfigs      GiveawayDonationConfig[]
   participants         GiveawayParticipant[]
 
   @@index([userId, status])
@@ -164,6 +155,20 @@ model GiveawayDonationRuleOverride {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   giveaway           Giveaway          @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+  @@unique([giveawayId, platform, unitType])
+}
+
+// Configuração de doações por sorteio (tabela pivô)
+// Define quais tipos de doação estão habilitados e suas janelas de tempo
+model GiveawayDonationConfig {
+  id             String            @id @default(uuid())
+  giveawayId     String
+  platform       ConnectedPlatform // TWITCH, KICK, YOUTUBE
+  unitType       String            // "BITS" | "GIFT_SUB" | "KICK_COINS" | "SUPERCHAT"
+  donationWindow DonationWindow    // DAILY | WEEKLY | MONTHLY
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  giveaway       Giveaway          @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
   @@unique([giveawayId, platform, unitType])
 }
 

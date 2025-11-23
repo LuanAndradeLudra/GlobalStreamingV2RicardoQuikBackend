@@ -5,6 +5,7 @@ import { UpdateGiveawayDto } from './dto/update-giveaway.dto';
 import { Giveaway, GiveawayStatus, ConnectedPlatform } from '@prisma/client';
 import { CreateGiveawayTicketRuleOverrideDto } from './dto/create-giveaway-ticket-rule-override.dto';
 import { CreateGiveawayDonationRuleOverrideDto } from './dto/create-giveaway-donation-rule-override.dto';
+import { CreateGiveawayDonationConfigDto } from './dto/create-giveaway-donation-config.dto';
 
 @Injectable()
 export class GiveawayService {
@@ -153,6 +154,68 @@ export class GiveawayService {
   }
 
   /**
+   * Upsert donation configs for a giveaway.
+   * Removes existing configs not in the new list, creates/updates the ones provided.
+   */
+  async upsertDonationConfigs(
+    giveawayId: string,
+    configs: CreateGiveawayDonationConfigDto[] | undefined,
+  ): Promise<void> {
+    if (!configs) {
+      return;
+    }
+
+    // Get existing configs
+    const existing = await this.prisma.giveawayDonationConfig.findMany({
+      where: { giveawayId },
+    });
+
+    const existingKeys = new Set(
+      existing.map((c) => `${c.platform}:${c.unitType}`),
+    );
+    const newKeys = new Set(
+      configs.map((c) => `${c.platform}:${c.unitType}`),
+    );
+
+    // Delete configs that are no longer in the list
+    const toDelete = existing.filter(
+      (c) => !newKeys.has(`${c.platform}:${c.unitType}`),
+    );
+    if (toDelete.length > 0) {
+      await this.prisma.giveawayDonationConfig.deleteMany({
+        where: {
+          giveawayId,
+          id: { in: toDelete.map((c) => c.id) },
+        },
+      });
+    }
+
+    // Upsert the new/updated configs
+    await Promise.all(
+      configs.map((config) =>
+        this.prisma.giveawayDonationConfig.upsert({
+          where: {
+            giveawayId_platform_unitType: {
+              giveawayId,
+              platform: config.platform,
+              unitType: config.unitType,
+            },
+          },
+          update: {
+            donationWindow: config.donationWindow,
+          },
+          create: {
+            giveawayId,
+            platform: config.platform,
+            unitType: config.unitType,
+            donationWindow: config.donationWindow,
+          },
+        }),
+      ),
+    );
+  }
+
+  /**
    * Upsert donation rule overrides for a giveaway.
    * Removes existing overrides not in the new list, creates/updates the ones provided.
    */
@@ -246,20 +309,6 @@ export class GiveawayService {
       platforms: dto.platforms,
     });
 
-    // Validate donation windows are provided when flags are true
-    if (dto.includeBitsDonors && !dto.bitsDonationWindow) {
-      throw new BadRequestException('bitsDonationWindow is required when includeBitsDonors is true');
-    }
-    if (dto.includeGiftSubDonors && !dto.giftSubDonationWindow) {
-      throw new BadRequestException('giftSubDonationWindow is required when includeGiftSubDonors is true');
-    }
-    if (dto.includeCoinsDonors && !dto.coinsDonationWindow) {
-      throw new BadRequestException('coinsDonationWindow is required when includeCoinsDonors is true');
-    }
-    if (dto.includeSuperchatDonors && !dto.superchatDonationWindow) {
-      throw new BadRequestException('superchatDonationWindow is required when includeSuperchatDonors is true');
-    }
-
     // If creating with OPEN status, check if another OPEN giveaway exists
     if (status === GiveawayStatus.OPEN) {
       await this.checkOnlyOneOpenGiveaway(userId);
@@ -276,14 +325,6 @@ export class GiveawayService {
           platforms: dto.platforms,
           keyword: dto.keyword,
           allowedRoles,
-          includeBitsDonors: dto.includeBitsDonors ?? false,
-          includeGiftSubDonors: dto.includeGiftSubDonors ?? false,
-          includeCoinsDonors: dto.includeCoinsDonors ?? false,
-          includeSuperchatDonors: dto.includeSuperchatDonors ?? false,
-          bitsDonationWindow: dto.bitsDonationWindow,
-          giftSubDonationWindow: dto.giftSubDonationWindow,
-          coinsDonationWindow: dto.coinsDonationWindow,
-          superchatDonationWindow: dto.superchatDonationWindow,
         },
       });
 
@@ -294,6 +335,18 @@ export class GiveawayService {
             giveawayId: created.id,
             role: override.role,
             ticketsPerUnit: override.ticketsPerUnit,
+          })),
+        });
+      }
+
+      // Create donation configs if provided
+      if (dto.donationConfigs && dto.donationConfigs.length > 0) {
+        await tx.giveawayDonationConfig.createMany({
+          data: dto.donationConfigs.map((config) => ({
+            giveawayId: created.id,
+            platform: config.platform,
+            unitType: config.unitType,
+            donationWindow: config.donationWindow,
           })),
         });
       }
@@ -328,6 +381,7 @@ export class GiveawayService {
       include: {
         ticketRuleOverrides: true,
         donationRuleOverrides: true,
+        donationConfigs: true,
       },
     });
   }
@@ -344,6 +398,7 @@ export class GiveawayService {
       include: {
         ticketRuleOverrides: true,
         donationRuleOverrides: true,
+        donationConfigs: true,
       },
     });
 
@@ -385,25 +440,6 @@ export class GiveawayService {
       });
     }
 
-    // Validate donation windows when flags are being set
-    const includeBitsDonors = dto.includeBitsDonors ?? existingGiveaway.includeBitsDonors;
-    const includeGiftSubDonors = dto.includeGiftSubDonors ?? existingGiveaway.includeGiftSubDonors;
-    const includeCoinsDonors = dto.includeCoinsDonors ?? existingGiveaway.includeCoinsDonors;
-    const includeSuperchatDonors = dto.includeSuperchatDonors ?? existingGiveaway.includeSuperchatDonors;
-
-    if (includeBitsDonors && !dto.bitsDonationWindow && !existingGiveaway.bitsDonationWindow) {
-      throw new BadRequestException('bitsDonationWindow is required when includeBitsDonors is true');
-    }
-    if (includeGiftSubDonors && !dto.giftSubDonationWindow && !existingGiveaway.giftSubDonationWindow) {
-      throw new BadRequestException('giftSubDonationWindow is required when includeGiftSubDonors is true');
-    }
-    if (includeCoinsDonors && !dto.coinsDonationWindow && !existingGiveaway.coinsDonationWindow) {
-      throw new BadRequestException('coinsDonationWindow is required when includeCoinsDonors is true');
-    }
-    if (includeSuperchatDonors && !dto.superchatDonationWindow && !existingGiveaway.superchatDonationWindow) {
-      throw new BadRequestException('superchatDonationWindow is required when includeSuperchatDonors is true');
-    }
-
     // If updating status to OPEN, check if another OPEN giveaway exists
     if (dto.status === GiveawayStatus.OPEN) {
       await this.checkOnlyOneOpenGiveaway(userId, id);
@@ -420,14 +456,6 @@ export class GiveawayService {
           ...(dto.platforms !== undefined && { platforms: dto.platforms }),
           ...(dto.keyword !== undefined && { keyword: dto.keyword }),
           ...(allowedRoles !== undefined && { allowedRoles }),
-          ...(dto.includeBitsDonors !== undefined && { includeBitsDonors: dto.includeBitsDonors }),
-          ...(dto.includeGiftSubDonors !== undefined && { includeGiftSubDonors: dto.includeGiftSubDonors }),
-          ...(dto.includeCoinsDonors !== undefined && { includeCoinsDonors: dto.includeCoinsDonors }),
-          ...(dto.includeSuperchatDonors !== undefined && { includeSuperchatDonors: dto.includeSuperchatDonors }),
-          ...(dto.bitsDonationWindow !== undefined && { bitsDonationWindow: dto.bitsDonationWindow }),
-          ...(dto.giftSubDonationWindow !== undefined && { giftSubDonationWindow: dto.giftSubDonationWindow }),
-          ...(dto.coinsDonationWindow !== undefined && { coinsDonationWindow: dto.coinsDonationWindow }),
-          ...(dto.superchatDonationWindow !== undefined && { superchatDonationWindow: dto.superchatDonationWindow }),
         },
       });
 
@@ -469,6 +497,58 @@ export class GiveawayService {
                 giveawayId: id,
                 role: override.role,
                 ticketsPerUnit: override.ticketsPerUnit,
+              },
+            }),
+          ),
+        );
+      }
+
+      // Upsert donation configs if provided
+      if (dto.donationConfigs !== undefined) {
+        // Get existing configs
+        const existing = await tx.giveawayDonationConfig.findMany({
+          where: { giveawayId: id },
+        });
+
+        const existingKeys = new Set(
+          existing.map((c) => `${c.platform}:${c.unitType}`),
+        );
+        const newKeys = new Set(
+          dto.donationConfigs.map((c) => `${c.platform}:${c.unitType}`),
+        );
+
+        // Delete configs that are no longer in the list
+        const toDelete = existing.filter(
+          (c) => !newKeys.has(`${c.platform}:${c.unitType}`),
+        );
+        if (toDelete.length > 0) {
+          await tx.giveawayDonationConfig.deleteMany({
+            where: {
+              giveawayId: id,
+              id: { in: toDelete.map((c) => c.id) },
+            },
+          });
+        }
+
+        // Upsert the new/updated configs
+        await Promise.all(
+          dto.donationConfigs.map((config) =>
+            tx.giveawayDonationConfig.upsert({
+              where: {
+                giveawayId_platform_unitType: {
+                  giveawayId: id,
+                  platform: config.platform,
+                  unitType: config.unitType,
+                },
+              },
+              update: {
+                donationWindow: config.donationWindow,
+              },
+              create: {
+                giveawayId: id,
+                platform: config.platform,
+                unitType: config.unitType,
+                donationWindow: config.donationWindow,
               },
             }),
           ),
@@ -586,8 +666,20 @@ export class GiveawayService {
     giftTickets: number;
     totalTickets: number;
   }> {
-    // Get giveaway to check donation flags
-    const giveaway = await this.findOne(input.adminUserId, input.giveawayId);
+    // Get giveaway with donation configs to check which donation types are enabled
+    const giveaway = await this.prisma.giveaway.findFirst({
+      where: {
+        id: input.giveawayId,
+        userId: input.adminUserId,
+      },
+      include: {
+        donationConfigs: true,
+      },
+    });
+
+    if (!giveaway) {
+      throw new NotFoundException(`Giveaway with ID ${input.giveawayId} not found`);
+    }
 
     // 1. Calculate base tickets from role (check override first, then global rule)
     let baseTickets = 0;
@@ -627,9 +719,12 @@ export class GiveawayService {
       }
     }
 
-    // 2. Calculate bits tickets (if enabled)
+    // 2. Calculate bits tickets (if enabled via donation config)
     let bitsTickets = 0;
-    if (giveaway.includeBitsDonors && input.totalBits && input.totalBits > 0) {
+    const bitsConfig = giveaway.donationConfigs.find(
+      (config) => config.platform === input.platform && config.unitType === 'BITS',
+    );
+    if (bitsConfig && input.totalBits && input.totalBits > 0) {
       // Check for giveaway-specific override first
       const donationOverride = await this.prisma.giveawayDonationRuleOverride.findUnique({
         where: {
@@ -663,9 +758,12 @@ export class GiveawayService {
       }
     }
 
-    // 3. Calculate gift sub tickets (if enabled)
+    // 3. Calculate gift sub tickets (if enabled via donation config)
     let giftTickets = 0;
-    if (giveaway.includeGiftSubDonors && input.totalGiftSubs && input.totalGiftSubs > 0) {
+    const giftSubConfig = giveaway.donationConfigs.find(
+      (config) => config.platform === input.platform && config.unitType === 'GIFT_SUB',
+    );
+    if (giftSubConfig && input.totalGiftSubs && input.totalGiftSubs > 0) {
       // Check for giveaway-specific override first
       const donationOverride = await this.prisma.giveawayDonationRuleOverride.findUnique({
         where: {

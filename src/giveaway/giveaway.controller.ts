@@ -37,33 +37,68 @@ export class GiveawayController {
       'Platforms must be stream platforms only (TWITCH, KICK, YOUTUBE). ' +
       'Keyword is required for all giveaways. ' +
       'Use subsOnly or nonSubsOnly shortcuts, or provide allowedRoles array. ' +
-      'Donation windows are required when corresponding donation flags are true.',
+      'Donation configs define which donation types are enabled per platform with their time windows.',
   })
   @ApiResponse({
     status: 201,
-    description: 'Giveaway created successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string' },
-        userId: { type: 'string' },
-        name: { type: 'string' },
-        type: { type: 'string', enum: ['LIVE_KEYWORD', 'SUBS_ONLY', 'DONATION_ONLY', 'INSTAGRAM_COMMENTS', 'TIKTOK_COMMENTS', 'MANUAL'] },
-        status: { type: 'string', enum: ['DRAFT', 'OPEN', 'CLOSED'] },
-        platforms: {
-          type: 'array',
-          items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
+      description: 'Giveaway created successfully',
+      schema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          userId: { type: 'string' },
+          name: { type: 'string' },
+          description: { type: 'string', nullable: true },
+          status: { type: 'string', enum: ['DRAFT', 'OPEN', 'CLOSED'] },
+          platforms: {
+            type: 'array',
+            items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE'] },
+          },
+          keyword: { type: 'string' },
+          allowedRoles: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+          donationConfigs: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                platform: { type: 'string' },
+                unitType: { type: 'string' },
+                donationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'] },
+              },
+            },
+          },
+          ticketRuleOverrides: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                role: { type: 'string' },
+                ticketsPerUnit: { type: 'number' },
+              },
+            },
+          },
+          donationRuleOverrides: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                platform: { type: 'string' },
+                unitType: { type: 'string' },
+                unitSize: { type: 'number' },
+                ticketsPerUnitSize: { type: 'number' },
+              },
+            },
+          },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
         },
-        keyword: { type: 'string', nullable: true },
-        includeBitsDonors: { type: 'boolean' },
-        includeGiftSubDonors: { type: 'boolean' },
-        bitsDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
-        giftSubDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
-        configOverrideId: { type: 'string', nullable: true },
-        createdAt: { type: 'string', format: 'date-time' },
-        updatedAt: { type: 'string', format: 'date-time' },
       },
-    },
   })
   @ApiResponse({
     status: 400,
@@ -112,14 +147,18 @@ export class GiveawayController {
             type: 'array',
             items: { type: 'string' },
           },
-          includeBitsDonors: { type: 'boolean' },
-          includeGiftSubDonors: { type: 'boolean' },
-          includeCoinsDonors: { type: 'boolean' },
-          includeSuperchatDonors: { type: 'boolean' },
-          bitsDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
-          giftSubDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
-          coinsDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
-          superchatDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
+          donationConfigs: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                platform: { type: 'string' },
+                unitType: { type: 'string' },
+                donationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'] },
+              },
+            },
+          },
           ticketRuleOverrides: {
             type: 'array',
             items: {
@@ -189,6 +228,42 @@ export class GiveawayController {
           type: 'array',
           items: { type: 'string' },
         },
+        donationConfigs: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              platform: { type: 'string' },
+              unitType: { type: 'string' },
+              donationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'] },
+            },
+          },
+        },
+        ticketRuleOverrides: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              role: { type: 'string' },
+              ticketsPerUnit: { type: 'number' },
+            },
+          },
+        },
+        donationRuleOverrides: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              platform: { type: 'string' },
+              unitType: { type: 'string' },
+              unitSize: { type: 'number' },
+              ticketsPerUnitSize: { type: 'number' },
+            },
+          },
+        },
         createdAt: { type: 'string', format: 'date-time' },
         updatedAt: { type: 'string', format: 'date-time' },
       },
@@ -218,7 +293,7 @@ export class GiveawayController {
   @ApiOperation({
     summary: 'Update a giveaway',
     description:
-      'Updates a giveaway. Can update name, description, keyword, platforms, status, allowedRoles, donation flags, donation windows, and overrides. ' +
+      'Updates a giveaway. Can update name, description, keyword, platforms, status, allowedRoles, donation configs, and overrides. ' +
       'Only one giveaway can be OPEN at a time per admin. Returns error 400 if trying to set OPEN when another already exists. ' +
       'Platforms must be stream platforms only (TWITCH, KICK, YOUTUBE). ' +
       'Keyword is required for all giveaways. ' +
@@ -233,18 +308,53 @@ export class GiveawayController {
         id: { type: 'string' },
         userId: { type: 'string' },
         name: { type: 'string' },
-        type: { type: 'string', enum: ['LIVE_KEYWORD', 'SUBS_ONLY', 'DONATION_ONLY', 'INSTAGRAM_COMMENTS', 'TIKTOK_COMMENTS', 'MANUAL'] },
+        description: { type: 'string', nullable: true },
         status: { type: 'string', enum: ['DRAFT', 'OPEN', 'CLOSED'] },
         platforms: {
           type: 'array',
-          items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
+          items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE'] },
         },
-        keyword: { type: 'string', nullable: true },
-        includeBitsDonors: { type: 'boolean' },
-        includeGiftSubDonors: { type: 'boolean' },
-        bitsDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
-        giftSubDonationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'], nullable: true },
-        configOverrideId: { type: 'string', nullable: true },
+        keyword: { type: 'string' },
+        allowedRoles: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+        donationConfigs: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              platform: { type: 'string' },
+              unitType: { type: 'string' },
+              donationWindow: { type: 'string', enum: ['DAILY', 'WEEKLY', 'MONTHLY'] },
+            },
+          },
+        },
+        ticketRuleOverrides: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              role: { type: 'string' },
+              ticketsPerUnit: { type: 'number' },
+            },
+          },
+        },
+        donationRuleOverrides: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              platform: { type: 'string' },
+              unitType: { type: 'string' },
+              unitSize: { type: 'number' },
+              ticketsPerUnitSize: { type: 'number' },
+            },
+          },
+        },
         createdAt: { type: 'string', format: 'date-time' },
         updatedAt: { type: 'string', format: 'date-time' },
       },
