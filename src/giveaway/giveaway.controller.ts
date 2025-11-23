@@ -14,11 +14,13 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { GiveawayService } from './giveaway.service';
 import { CreateGiveawayDto } from './dto/create-giveaway.dto';
 import { UpdateGiveawayDto } from './dto/update-giveaway.dto';
+import { CreateParticipantDto } from './dto/create-participant.dto';
+import { CreateParticipantsBatchDto } from './dto/create-participants-batch.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { User, UserRole, StreamGiveaway } from '@prisma/client';
+import { User, UserRole, StreamGiveaway, StreamGiveawayParticipant } from '@prisma/client';
 
 @ApiTags('stream-giveaways')
 @Controller('stream-giveaways')
@@ -205,12 +207,12 @@ export class GiveawayController {
   @Get(':id')
   @Roles(UserRole.ADMIN)
   @ApiOperation({
-    summary: 'Get giveaway details',
-    description: 'Returns details of a specific giveaway. Ensures the giveaway belongs to the authenticated admin user.',
+    summary: 'Get stream giveaway details',
+    description: 'Returns details of a specific stream giveaway including all participants. Ensures the stream giveaway belongs to the authenticated admin user.',
   })
   @ApiResponse({
     status: 200,
-    description: 'Giveaway retrieved successfully',
+    description: 'Stream giveaway retrieved successfully',
     schema: {
       type: 'object',
       properties: {
@@ -261,6 +263,41 @@ export class GiveawayController {
               unitType: { type: 'string' },
               unitSize: { type: 'number' },
               ticketsPerUnitSize: { type: 'number' },
+            },
+          },
+        },
+        participants: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              streamGiveawayId: { type: 'string' },
+              platform: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'INSTAGRAM', 'TIKTOK'] },
+              externalUserId: { type: 'string' },
+              username: { type: 'string' },
+              avatarUrl: { type: 'string', nullable: true },
+              method: {
+                type: 'string',
+                enum: [
+                  'BITS',
+                  'GIFT_SUB',
+                  'KICK_COINS',
+                  'SUPERCHAT',
+                  'TWITCH_TIER_1',
+                  'TWITCH_TIER_2',
+                  'TWITCH_TIER_3',
+                  'TWITCH_NON_SUB',
+                  'KICK_SUB',
+                  'KICK_NON_SUB',
+                  'YOUTUBE_SUB',
+                  'YOUTUBE_NON_SUB',
+                ],
+              },
+              tickets: { type: 'number' },
+              metadata: { type: 'object', nullable: true },
+              createdAt: { type: 'string', format: 'date-time' },
+              updatedAt: { type: 'string', format: 'date-time' },
             },
           },
         },
@@ -412,6 +449,149 @@ export class GiveawayController {
     @Param('id') id: string,
   ): Promise<void> {
     await this.giveawayService.remove(user.id, id);
+  }
+
+  @Post(':id/participants')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Add a participant entry to a stream giveaway',
+    description: 'Adds a single participant entry to a stream giveaway. Allows multiple entries per user with different methods (e.g., Bits, Tier 3, non_sub).',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Participant entry created successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        streamGiveawayId: { type: 'string' },
+        platform: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE'] },
+        externalUserId: { type: 'string' },
+        username: { type: 'string' },
+        avatarUrl: { type: 'string', nullable: true },
+        method: { type: 'string', enum: ['BITS', 'TWITCH_TIER_1', 'TWITCH_TIER_2', 'TWITCH_TIER_3', 'TWITCH_NON_SUB', 'KICK_SUB', 'KICK_NON_SUB', 'YOUTUBE_SUB', 'YOUTUBE_NON_SUB', 'GIFT_SUB', 'KICK_COINS', 'SUPERCHAT'] },
+        tickets: { type: 'number' },
+        metadata: { type: 'object', nullable: true },
+        createdAt: { type: 'string', format: 'date-time' },
+        updatedAt: { type: 'string', format: 'date-time' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthenticated - invalid or missing token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user is not an admin',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Stream giveaway not found',
+  })
+  async addParticipant(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Body() dto: CreateParticipantDto,
+  ): Promise<StreamGiveawayParticipant> {
+    return this.giveawayService.addParticipant(user.id, id, dto);
+  }
+
+  @Post(':id/participants/batch')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Add multiple participant entries to a stream giveaway',
+    description: 'Adds multiple participant entries to a stream giveaway in batch. Useful for testing or bulk imports. Allows multiple entries per user with different methods.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Participant entries created successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          streamGiveawayId: { type: 'string' },
+          platform: { type: 'string' },
+          externalUserId: { type: 'string' },
+          username: { type: 'string' },
+          method: { type: 'string' },
+          tickets: { type: 'number' },
+          metadata: { type: 'object', nullable: true },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthenticated - invalid or missing token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user is not an admin',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Stream giveaway not found',
+  })
+  async addParticipantsBatch(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Body() dto: CreateParticipantsBatchDto,
+  ): Promise<StreamGiveawayParticipant[]> {
+    return this.giveawayService.addParticipantsBatch(user.id, id, dto);
+  }
+
+  @Get(':id/participants')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Get all participants for a stream giveaway',
+    description: 'Returns all participant entries for a specific stream giveaway, ordered by creation date and tickets.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Participants retrieved successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          streamGiveawayId: { type: 'string' },
+          platform: { type: 'string' },
+          externalUserId: { type: 'string' },
+          username: { type: 'string' },
+          method: { type: 'string' },
+          tickets: { type: 'number' },
+          metadata: { type: 'object', nullable: true },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthenticated - invalid or missing token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user is not an admin',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Stream giveaway not found',
+  })
+  async getParticipants(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ): Promise<StreamGiveawayParticipant[]> {
+    return this.giveawayService.getParticipants(user.id, id);
   }
 }
 

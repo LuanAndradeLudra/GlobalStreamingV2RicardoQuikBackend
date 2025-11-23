@@ -1,0 +1,481 @@
+{
+  "info": {
+    "name": "Trully Giveaway API",
+    "description": "Collection completa da API Trully Giveaway - Stream Giveaways",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "stream_giveaway_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Retorna os dados do usuário autenticado"
+          }
+        },
+        {
+          "name": "Google OAuth Login",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/google",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google"]
+            },
+            "description": "Inicia o login via Google OAuth"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stream Giveaways",
+      "item": [
+        {
+          "name": "Create Stream Giveaway",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Summer Stream Giveaway 2024\",\n  \"description\": \"A summer stream giveaway for all subscribers\",\n  \"status\": \"OPEN\",\n  \"platforms\": [\"TWITCH\", \"KICK\", \"YOUTUBE\"],\n  \"keyword\": \"!enter\",\n  \"allowedRoles\": [\"TWITCH_TIER_1\", \"TWITCH_TIER_2\", \"TWITCH_TIER_3\", \"TWITCH_NON_SUB\", \"KICK_SUB\", \"KICK_NON_SUB\", \"YOUTUBE_SUB\", \"YOUTUBE_NON_SUB\"],\n  \"ticketRuleOverrides\": [\n    {\n      \"role\": \"TWITCH_TIER_3\",\n      \"ticketsPerUnit\": 25\n    }\n  ],\n  \"donationConfigs\": [\n    {\n      \"platform\": \"TWITCH\",\n      \"unitType\": \"BITS\",\n      \"donationWindow\": \"DAILY\"\n    },\n    {\n      \"platform\": \"TWITCH\",\n      \"unitType\": \"GIFT_SUB\",\n      \"donationWindow\": \"DAILY\"\n    },\n    {\n      \"platform\": \"KICK\",\n      \"unitType\": \"KICK_COINS\",\n      \"donationWindow\": \"DAILY\"\n    },\n    {\n      \"platform\": \"YOUTUBE\",\n      \"unitType\": \"SUPERCHAT\",\n      \"donationWindow\": \"DAILY\"\n    }\n  ],\n  \"donationRuleOverrides\": [\n    {\n      \"platform\": \"TWITCH\",\n      \"unitType\": \"BITS\",\n      \"unitSize\": 100,\n      \"ticketsPerUnitSize\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/stream-giveaways",
+              "host": ["{{base_url}}"],
+              "path": ["stream-giveaways"]
+            },
+            "description": "Cria um novo stream giveaway"
+          },
+          "response": []
+        },
+        {
+          "name": "List All Stream Giveaways",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/stream-giveaways",
+              "host": ["{{base_url}}"],
+              "path": ["stream-giveaways"]
+            },
+            "description": "Lista todos os stream giveaways do usuário autenticado"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Stream Giveaway by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/stream-giveaways/:id",
+              "host": ["{{base_url}}"],
+              "path": ["stream-giveaways", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{stream_giveaway_id}}",
+                  "description": "ID do stream giveaway"
+                }
+              ]
+            },
+            "description": "Retorna os detalhes de um stream giveaway específico incluindo todos os participantes"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Stream Giveaway",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Stream Giveaway Name\",\n  \"status\": \"CLOSED\",\n  \"keyword\": \"!join\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/stream-giveaways/:id",
+              "host": ["{{base_url}}"],
+              "path": ["stream-giveaways", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{stream_giveaway_id}}"
+                }
+              ]
+            },
+            "description": "Atualiza um stream giveaway existente"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Stream Giveaway",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/stream-giveaways/:id",
+              "host": ["{{base_url}}"],
+              "path": ["stream-giveaways", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{stream_giveaway_id}}"
+                }
+              ]
+            },
+            "description": "Deleta um stream giveaway e todos os dados relacionados"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Participants",
+      "item": [
+        {
+          "name": "Add Single Participant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"platform\": \"TWITCH\",\n  \"externalUserId\": \"123456789\",\n  \"username\": \"user1\",\n  \"avatarUrl\": \"https://br.freepik.com/fotos-vetores-gratis/twitch-logo\",\n  \"method\": \"BITS\",\n  \"tickets\": 100,\n  \"metadata\": {\n    \"bitsAmount\": 10000\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/stream-giveaways/:id/participants",
+              "host": ["{{base_url}}"],
+              "path": ["stream-giveaways", ":id", "participants"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{stream_giveaway_id}}"
+                }
+              ]
+            },
+            "description": "Adiciona uma entrada de participante ao stream giveaway"
+          },
+          "response": []
+        },
+        {
+          "name": "Add Multiple Participants (Batch)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"participants\": [\n    {\n      \"platform\": \"TWITCH\",\n      \"externalUserId\": \"123456789\",\n      \"username\": \"user1\",\n      \"avatarUrl\": \"https://br.freepik.com/fotos-vetores-gratis/twitch-logo\",\n      \"method\": \"BITS\",\n      \"tickets\": 100,\n      \"metadata\": {\n        \"bitsAmount\": 10000\n      }\n    },\n    {\n      \"platform\": \"TWITCH\",\n      \"externalUserId\": \"123456789\",\n      \"username\": \"user1\",\n      \"avatarUrl\": \"https://br.freepik.com/fotos-vetores-gratis/twitch-logo\",\n      \"method\": \"TWITCH_TIER_3\",\n      \"tickets\": 20\n    },\n    {\n      \"platform\": \"YOUTUBE\",\n      \"externalUserId\": \"987654321\",\n      \"username\": \"user2\",\n      \"avatarUrl\": \"https://www.flaticon.com/br/icone-gratis/youtube_1384060\",\n      \"method\": \"YOUTUBE_NON_SUB\",\n      \"tickets\": 5\n    },\n    {\n      \"platform\": \"TWITCH\",\n      \"externalUserId\": \"555555555\",\n      \"username\": \"user3\",\n      \"avatarUrl\": \"https://br.freepik.com/fotos-vetores-gratis/twitch-logo\",\n      \"method\": \"TWITCH_TIER_1\",\n      \"tickets\": 10\n    },\n    {\n      \"platform\": \"TWITCH\",\n      \"externalUserId\": \"555555555\",\n      \"username\": \"user3\",\n      \"avatarUrl\": \"https://br.freepik.com/fotos-vetores-gratis/twitch-logo\",\n      \"method\": \"BITS\",\n      \"tickets\": 50,\n      \"metadata\": {\n        \"bitsAmount\": 5000\n      }\n    },\n    {\n      \"platform\": \"KICK\",\n      \"externalUserId\": \"111222333\",\n      \"username\": \"user4\",\n      \"avatarUrl\": \"https://www.pinterest.com/pin/kick-logo-vector-download-kick-streaming-logo--865043040928639546/\",\n      \"method\": \"KICK_SUB\",\n      \"tickets\": 15\n    },\n    {\n      \"platform\": \"KICK\",\n      \"externalUserId\": \"111222333\",\n      \"username\": \"user4\",\n      \"avatarUrl\": \"https://www.pinterest.com/pin/kick-logo-vector-download-kick-streaming-logo--865043040928639546/\",\n      \"method\": \"KICK_COINS\",\n      \"tickets\": 30,\n      \"metadata\": {\n        \"coinsAmount\": 3000\n      }\n    },\n    {\n      \"platform\": \"YOUTUBE\",\n      \"externalUserId\": \"444444444\",\n      \"username\": \"user5\",\n      \"avatarUrl\": \"https://www.flaticon.com/br/icone-gratis/youtube_1384060\",\n      \"method\": \"YOUTUBE_SUB\",\n      \"tickets\": 25\n    },\n    {\n      \"platform\": \"TWITCH\",\n      \"externalUserId\": \"666666666\",\n      \"username\": \"user6\",\n      \"avatarUrl\": \"https://br.freepik.com/fotos-vetores-gratis/twitch-logo\",\n      \"method\": \"GIFT_SUB\",\n      \"tickets\": 40,\n      \"metadata\": {\n        \"giftSubsAmount\": 10\n      }\n    },\n    {\n      \"platform\": \"YOUTUBE\",\n      \"externalUserId\": \"777777777\",\n      \"username\": \"user7\",\n      \"avatarUrl\": \"https://www.flaticon.com/br/icone-gratis/youtube_1384060\",\n      \"method\": \"SUPERCHAT\",\n      \"tickets\": 75,\n      \"metadata\": {\n        \"superchatAmount\": 7500\n      }\n    },\n    {\n      \"platform\": \"TWITCH\",\n      \"externalUserId\": \"777777777\",\n      \"username\": \"user7\",\n      \"avatarUrl\": \"https://br.freepik.com/fotos-vetores-gratis/twitch-logo\",\n      \"method\": \"TWITCH_TIER_2\",\n      \"tickets\": 15\n    },\n    {\n      \"platform\": \"TWITCH\",\n      \"externalUserId\": \"777777777\",\n      \"username\": \"user7\",\n      \"avatarUrl\": \"https://br.freepik.com/fotos-vetores-gratis/twitch-logo\",\n      \"method\": \"BITS\",\n      \"tickets\": 75,\n      \"metadata\": {\n        \"bitsAmount\": 7500\n      }\n    },\n    {\n      \"platform\": \"TWITCH\",\n      \"externalUserId\": \"777777777\",\n      \"username\": \"user7\",\n      \"avatarUrl\": \"https://br.freepik.com/fotos-vetores-gratis/twitch-logo\",\n      \"method\": \"TWITCH_NON_SUB\",\n      \"tickets\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/stream-giveaways/:id/participants/batch",
+              "host": ["{{base_url}}"],
+              "path": ["stream-giveaways", ":id", "participants", "batch"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{stream_giveaway_id}}"
+                }
+              ]
+            },
+            "description": "Adiciona múltiplas entradas de participantes ao stream giveaway em batch"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Participants",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/stream-giveaways/:id/participants",
+              "host": ["{{base_url}}"],
+              "path": ["stream-giveaways", ":id", "participants"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{stream_giveaway_id}}"
+                }
+              ]
+            },
+            "description": "Lista todos os participantes de um stream giveaway"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Ticket Config",
+      "item": [
+        {
+          "name": "Get Ticket Configuration",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/ticket-config",
+              "host": ["{{base_url}}"],
+              "path": ["ticket-config"]
+            },
+            "description": "Retorna todas as regras globais de tickets e donations"
+          },
+          "response": []
+        },
+        {
+          "name": "Upsert Global Ticket Rules",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rules\": [\n    {\n      \"platform\": \"TWITCH\",\n      \"role\": \"TWITCH_TIER_1\",\n      \"ticketsPerUnit\": 10\n    },\n    {\n      \"platform\": \"TWITCH\",\n      \"role\": \"TWITCH_TIER_2\",\n      \"ticketsPerUnit\": 15\n    },\n    {\n      \"platform\": \"TWITCH\",\n      \"role\": \"TWITCH_TIER_3\",\n      \"ticketsPerUnit\": 20\n    },\n    {\n      \"platform\": \"TWITCH\",\n      \"role\": \"NON_SUB\",\n      \"ticketsPerUnit\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ticket-config/rules",
+              "host": ["{{base_url}}"],
+              "path": ["ticket-config", "rules"]
+            },
+            "description": "Cria ou atualiza regras globais de tickets baseadas em roles"
+          },
+          "response": []
+        },
+        {
+          "name": "Upsert Global Donation Rules",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rules\": [\n    {\n      \"platform\": \"TWITCH\",\n      \"unitType\": \"BITS\",\n      \"unitSize\": 100,\n      \"ticketsPerUnitSize\": 1\n    },\n    {\n      \"platform\": \"TWITCH\",\n      \"unitType\": \"GIFT_SUB\",\n      \"unitSize\": 1,\n      \"ticketsPerUnitSize\": 4\n    },\n    {\n      \"platform\": \"KICK\",\n      \"unitType\": \"KICK_COINS\",\n      \"unitSize\": 100,\n      \"ticketsPerUnitSize\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ticket-config/donation-rules",
+              "host": ["{{base_url}}"],
+              "path": ["ticket-config", "donation-rules"]
+            },
+            "description": "Cria ou atualiza regras globais de tickets baseadas em donations"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Connected Accounts",
+      "item": [
+        {
+          "name": "List Connected Accounts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/connected-accounts",
+              "host": ["{{base_url}}"],
+              "path": ["connected-accounts"]
+            },
+            "description": "Lista todas as contas conectadas do usuário"
+          },
+          "response": []
+        },
+        {
+          "name": "Create or Update Connected Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"platform\": \"TWITCH\",\n  \"externalChannelId\": \"channel123\",\n  \"displayName\": \"My Twitch Channel\",\n  \"accessToken\": \"token_here\",\n  \"refreshToken\": \"refresh_token_here\",\n  \"scopes\": \"user:read:email channel:read:subscriptions\",\n  \"expiresAt\": \"2024-12-31T23:59:59Z\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/connected-accounts",
+              "host": ["{{base_url}}"],
+              "path": ["connected-accounts"]
+            },
+            "description": "Cria ou atualiza uma conta conectada"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Connected Account",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/connected-accounts/:id",
+              "host": ["{{base_url}}"],
+              "path": ["connected-accounts", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "CONNECTED_ACCOUNT_ID_HERE"
+                }
+              ]
+            },
+            "description": "Remove uma conta conectada"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
+

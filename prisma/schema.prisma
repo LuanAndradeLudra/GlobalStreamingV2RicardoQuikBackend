@@ -36,6 +36,21 @@ enum DonationWindow {
   MONTHLY
 }
 
+enum EntryMethod {
+  BITS
+  GIFT_SUB
+  KICK_COINS
+  SUPERCHAT
+  TWITCH_TIER_1
+  TWITCH_TIER_2
+  TWITCH_TIER_3
+  TWITCH_NON_SUB
+  KICK_SUB
+  KICK_NON_SUB
+  YOUTUBE_SUB
+  YOUTUBE_NON_SUB
+}
+
 model User {
   id                      String                      @id @default(uuid())
   email                   String                      @unique
@@ -178,14 +193,14 @@ model StreamGiveawayParticipant {
   platform       ConnectedPlatform
   externalUserId String
   username       String
-  isSub          Boolean
-  subTier        Int?
-  donationAmount Int?               // total de "unidades" (ex.: bits) considerados pra esse stream giveaway (se aplicável)
-  tickets        Int
-  sourceDetails  Json?
+  avatarUrl      String?            // URL da foto/avatar do participante
+  method         EntryMethod       // Método de entrada: BITS, TIER_1, NON_SUB, etc.
+  tickets        Int                // Quantidade de tickets para esta entrada específica
+  metadata       Json?              // Dados adicionais opcionais (ex.: quantidade de bits, tier específico, etc.)
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   streamGiveaway       StreamGiveaway          @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
   @@index([streamGiveawayId])
   @@index([streamGiveawayId, platform, externalUserId])
+  @@index([streamGiveawayId, externalUserId, method]) // Permite múltiplas entradas do mesmo usuário com métodos diferentes
 }

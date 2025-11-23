@@ -2,10 +2,12 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGiveawayDto } from './dto/create-giveaway.dto';
 import { UpdateGiveawayDto } from './dto/update-giveaway.dto';
-import { StreamGiveaway, StreamGiveawayStatus, ConnectedPlatform } from '@prisma/client';
+import { StreamGiveaway, StreamGiveawayStatus, ConnectedPlatform, StreamGiveawayParticipant } from '@prisma/client';
 import { CreateGiveawayTicketRuleOverrideDto } from './dto/create-giveaway-ticket-rule-override.dto';
 import { CreateGiveawayDonationRuleOverrideDto } from './dto/create-giveaway-donation-rule-override.dto';
 import { CreateGiveawayDonationConfigDto } from './dto/create-giveaway-donation-config.dto';
+import { CreateParticipantDto } from './dto/create-participant.dto';
+import { CreateParticipantsBatchDto } from './dto/create-participants-batch.dto';
 
 @Injectable()
 export class GiveawayService {
@@ -388,6 +390,7 @@ export class GiveawayService {
 
   /**
    * Get a specific stream giveaway by ID, ensuring it belongs to the authenticated admin user.
+   * Includes all related data: ticket rule overrides, donation rule overrides, donation configs, and participants.
    */
   async findOne(userId: string, id: string): Promise<StreamGiveaway> {
     const streamGiveaway = await this.prisma.streamGiveaway.findFirst({
@@ -399,6 +402,12 @@ export class GiveawayService {
         ticketRuleOverrides: true,
         donationRuleOverrides: true,
         donationConfigs: true,
+        participants: {
+          orderBy: [
+            { createdAt: 'desc' },
+            { tickets: 'desc' },
+          ],
+        },
       },
     });
 
@@ -821,6 +830,83 @@ export class GiveawayService {
     // Delete the stream giveaway (cascade will handle related records)
     await this.prisma.streamGiveaway.delete({
       where: { id: streamGiveaway.id },
+    });
+  }
+
+  /**
+   * Add a single participant entry to a stream giveaway.
+   * Allows multiple entries per user with different methods.
+   */
+  async addParticipant(
+    userId: string,
+    streamGiveawayId: string,
+    dto: CreateParticipantDto,
+  ): Promise<StreamGiveawayParticipant> {
+    // Ensure the stream giveaway exists and belongs to the user
+    await this.findOne(userId, streamGiveawayId);
+
+    // Create the participant entry
+    return this.prisma.streamGiveawayParticipant.create({
+      data: {
+        streamGiveawayId,
+        platform: dto.platform,
+        externalUserId: dto.externalUserId,
+        username: dto.username,
+        avatarUrl: dto.avatarUrl || undefined,
+        method: dto.method,
+        tickets: dto.tickets,
+        metadata: dto.metadata || undefined,
+      },
+    });
+  }
+
+  /**
+   * Add multiple participant entries to a stream giveaway in batch.
+   * Allows multiple entries per user with different methods.
+   */
+  async addParticipantsBatch(
+    userId: string,
+    streamGiveawayId: string,
+    dto: CreateParticipantsBatchDto,
+  ): Promise<StreamGiveawayParticipant[]> {
+    // Ensure the stream giveaway exists and belongs to the user
+    await this.findOne(userId, streamGiveawayId);
+
+    // Create all participant entries in a transaction
+    return this.prisma.$transaction(
+      dto.participants.map((participant) =>
+        this.prisma.streamGiveawayParticipant.create({
+          data: {
+            streamGiveawayId,
+            platform: participant.platform,
+            externalUserId: participant.externalUserId,
+            username: participant.username,
+            avatarUrl: participant.avatarUrl || undefined,
+            method: participant.method,
+            tickets: participant.tickets,
+            metadata: participant.metadata || undefined,
+          },
+        }),
+      ),
+    );
+  }
+
+  /**
+   * Get all participants for a stream giveaway.
+   */
+  async getParticipants(
+    userId: string,
+    streamGiveawayId: string,
+  ): Promise<StreamGiveawayParticipant[]> {
+    // Ensure the stream giveaway exists and belongs to the user
+    await this.findOne(userId, streamGiveawayId);
+
+    return this.prisma.streamGiveawayParticipant.findMany({
+      where: { streamGiveawayId },
+      orderBy: [
+        { createdAt: 'desc' },
+        { tickets: 'desc' },
+      ],
     });
   }
 }
