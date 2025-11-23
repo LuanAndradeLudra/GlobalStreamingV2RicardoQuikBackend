@@ -31,7 +31,7 @@ export class TicketConfigController {
       'Returns all global ticket rules and donation rules for the authenticated admin user. ' +
       'Global ticket rules define tickets based on the user\'s base subscription status. ' +
       'Donation rules define extra ticket increments based on quantity of bits/coins/gifts. ' +
-      'These rules serve as defaults for all giveaways.',
+      'These rules serve as defaults for all stream giveaways.',
   })
   @ApiResponse({
     status: 200,
@@ -97,7 +97,7 @@ export class TicketConfigController {
       'These rules define tickets based on the user\'s base subscription status. ' +
       'Roles represent the "base state" of the user: non-sub, twitch tier, kick sub, youtube sub. ' +
       'Gift subs are handled in donation rules, not here. ' +
-      'These are default rules applied to all giveaways.',
+      'These are default rules applied to all stream giveaways.',
   })
   @ApiResponse({
     status: 200,
@@ -145,10 +145,10 @@ export class TicketConfigController {
     description:
       'Creates or updates global donation rules for the authenticated admin user. ' +
       'These rules define extra ticket increments based on quantity of bits/coins/gifts. ' +
-      'Time window (daily/weekly/monthly) is not defined here; it will be set per giveaway. ' +
+      'Time window (daily/weekly/monthly) is not defined here; it will be set per stream giveaway. ' +
       'Examples: unitType="BITS", unitSize=100, ticketsPerUnitSize=1 → 100 bits = 1 ticket; ' +
       'unitType="GIFT_SUB", unitSize=1, ticketsPerUnitSize=4 → 1 gift = 4 tickets. ' +
-      'These are default rules applied to all giveaways.',
+      'These are default rules applied to all stream giveaways.',
   })
   @ApiResponse({
     status: 200,

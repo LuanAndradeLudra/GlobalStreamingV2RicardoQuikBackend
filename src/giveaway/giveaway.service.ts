@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGiveawayDto } from './dto/create-giveaway.dto';
 import { UpdateGiveawayDto } from './dto/update-giveaway.dto';
-import { Giveaway, GiveawayStatus, ConnectedPlatform } from '@prisma/client';
+import { StreamGiveaway, StreamGiveawayStatus, ConnectedPlatform } from '@prisma/client';
 import { CreateGiveawayTicketRuleOverrideDto } from './dto/create-giveaway-ticket-rule-override.dto';
 import { CreateGiveawayDonationRuleOverrideDto } from './dto/create-giveaway-donation-rule-override.dto';
 import { CreateGiveawayDonationConfigDto } from './dto/create-giveaway-donation-config.dto';
@@ -100,11 +100,11 @@ export class GiveawayService {
   }
 
   /**
-   * Upsert ticket rule overrides for a giveaway.
+   * Upsert ticket rule overrides for a stream giveaway.
    * Removes existing overrides not in the new list, creates/updates the ones provided.
    */
   async upsertTicketOverrides(
-    giveawayId: string,
+    streamGiveawayId: string,
     overrides: CreateGiveawayTicketRuleOverrideDto[] | undefined,
   ): Promise<void> {
     if (!overrides) {
@@ -112,8 +112,8 @@ export class GiveawayService {
     }
 
     // Get existing overrides
-    const existing = await this.prisma.giveawayTicketRuleOverride.findMany({
-      where: { giveawayId },
+    const existing = await this.prisma.streamGiveawayTicketRuleOverride.findMany({
+      where: { streamGiveawayId },
     });
 
     const existingRoles = new Set(existing.map((o) => o.role));
@@ -122,9 +122,9 @@ export class GiveawayService {
     // Delete overrides that are no longer in the list
     const toDelete = existing.filter((o) => !newRoles.has(o.role));
     if (toDelete.length > 0) {
-      await this.prisma.giveawayTicketRuleOverride.deleteMany({
+      await this.prisma.streamGiveawayTicketRuleOverride.deleteMany({
         where: {
-          giveawayId,
+          streamGiveawayId,
           role: { in: toDelete.map((o) => o.role) },
         },
       });
@@ -133,10 +133,10 @@ export class GiveawayService {
     // Upsert the new/updated overrides
     await Promise.all(
       overrides.map((override) =>
-        this.prisma.giveawayTicketRuleOverride.upsert({
+        this.prisma.streamGiveawayTicketRuleOverride.upsert({
           where: {
-            giveawayId_role: {
-              giveawayId,
+            streamGiveawayId_role: {
+              streamGiveawayId,
               role: override.role,
             },
           },
@@ -144,7 +144,7 @@ export class GiveawayService {
             ticketsPerUnit: override.ticketsPerUnit,
           },
           create: {
-            giveawayId,
+            streamGiveawayId,
             role: override.role,
             ticketsPerUnit: override.ticketsPerUnit,
           },
@@ -154,11 +154,11 @@ export class GiveawayService {
   }
 
   /**
-   * Upsert donation configs for a giveaway.
+   * Upsert donation configs for a stream giveaway.
    * Removes existing configs not in the new list, creates/updates the ones provided.
    */
   async upsertDonationConfigs(
-    giveawayId: string,
+    streamGiveawayId: string,
     configs: CreateGiveawayDonationConfigDto[] | undefined,
   ): Promise<void> {
     if (!configs) {
@@ -166,8 +166,8 @@ export class GiveawayService {
     }
 
     // Get existing configs
-    const existing = await this.prisma.giveawayDonationConfig.findMany({
-      where: { giveawayId },
+    const existing = await this.prisma.streamGiveawayDonationConfig.findMany({
+      where: { streamGiveawayId },
     });
 
     const existingKeys = new Set(
@@ -182,9 +182,9 @@ export class GiveawayService {
       (c) => !newKeys.has(`${c.platform}:${c.unitType}`),
     );
     if (toDelete.length > 0) {
-      await this.prisma.giveawayDonationConfig.deleteMany({
+      await this.prisma.streamGiveawayDonationConfig.deleteMany({
         where: {
-          giveawayId,
+          streamGiveawayId,
           id: { in: toDelete.map((c) => c.id) },
         },
       });
@@ -193,10 +193,10 @@ export class GiveawayService {
     // Upsert the new/updated configs
     await Promise.all(
       configs.map((config) =>
-        this.prisma.giveawayDonationConfig.upsert({
+        this.prisma.streamGiveawayDonationConfig.upsert({
           where: {
-            giveawayId_platform_unitType: {
-              giveawayId,
+            streamGiveawayId_platform_unitType: {
+              streamGiveawayId,
               platform: config.platform,
               unitType: config.unitType,
             },
@@ -205,7 +205,7 @@ export class GiveawayService {
             donationWindow: config.donationWindow,
           },
           create: {
-            giveawayId,
+            streamGiveawayId,
             platform: config.platform,
             unitType: config.unitType,
             donationWindow: config.donationWindow,
@@ -216,11 +216,11 @@ export class GiveawayService {
   }
 
   /**
-   * Upsert donation rule overrides for a giveaway.
+   * Upsert donation rule overrides for a stream giveaway.
    * Removes existing overrides not in the new list, creates/updates the ones provided.
    */
   async upsertDonationOverrides(
-    giveawayId: string,
+    streamGiveawayId: string,
     overrides: CreateGiveawayDonationRuleOverrideDto[] | undefined,
   ): Promise<void> {
     if (!overrides) {
@@ -228,8 +228,8 @@ export class GiveawayService {
     }
 
     // Get existing overrides
-    const existing = await this.prisma.giveawayDonationRuleOverride.findMany({
-      where: { giveawayId },
+    const existing = await this.prisma.streamGiveawayDonationRuleOverride.findMany({
+      where: { streamGiveawayId },
     });
 
     const existingKeys = new Set(
@@ -245,11 +245,11 @@ export class GiveawayService {
     );
     if (toDelete.length > 0) {
       await Promise.all(
-        toDelete.map((o: { giveawayId: string; platform: ConnectedPlatform; unitType: string }) =>
-          this.prisma.giveawayDonationRuleOverride.delete({
+        toDelete.map((o: { streamGiveawayId: string; platform: ConnectedPlatform; unitType: string }) =>
+          this.prisma.streamGiveawayDonationRuleOverride.delete({
             where: {
-              giveawayId_platform_unitType: {
-                giveawayId: o.giveawayId,
+              streamGiveawayId_platform_unitType: {
+                streamGiveawayId: o.streamGiveawayId,
                 platform: o.platform,
                 unitType: o.unitType,
               },
@@ -262,10 +262,10 @@ export class GiveawayService {
     // Upsert the new/updated overrides
     await Promise.all(
       overrides.map((override) =>
-        this.prisma.giveawayDonationRuleOverride.upsert({
+        this.prisma.streamGiveawayDonationRuleOverride.upsert({
           where: {
-            giveawayId_platform_unitType: {
-              giveawayId,
+            streamGiveawayId_platform_unitType: {
+              streamGiveawayId,
               platform: override.platform,
               unitType: override.unitType,
             },
@@ -275,7 +275,7 @@ export class GiveawayService {
             ticketsPerUnitSize: override.ticketsPerUnitSize,
           },
           create: {
-            giveawayId,
+            streamGiveawayId,
             platform: override.platform,
             unitType: override.unitType,
             unitSize: override.unitSize,
@@ -287,18 +287,18 @@ export class GiveawayService {
   }
 
   /**
-   * Create a new giveaway for the authenticated admin user.
-   * Business rule: Only one OPEN giveaway per admin. Returns error if trying to create OPEN when one already exists.
+   * Create a new stream giveaway for the authenticated admin user.
+   * Business rule: Only one OPEN stream giveaway per admin. Returns error if trying to create OPEN when one already exists.
    */
-  async create(userId: string, dto: CreateGiveawayDto): Promise<Giveaway> {
-    const status = dto.status || GiveawayStatus.DRAFT;
+  async create(userId: string, dto: CreateGiveawayDto): Promise<StreamGiveaway> {
+    const status = dto.status || StreamGiveawayStatus.DRAFT;
 
     // Validate platforms are stream platforms only
     this.validatePlatforms(dto.platforms);
 
     // Validate keyword is required and not empty
     if (!dto.keyword || dto.keyword.trim().length === 0) {
-      throw new BadRequestException('Keyword is required for all giveaways');
+      throw new BadRequestException('Keyword is required for all stream giveaways');
     }
 
     // Normalize allowedRoles
@@ -309,14 +309,14 @@ export class GiveawayService {
       platforms: dto.platforms,
     });
 
-    // If creating with OPEN status, check if another OPEN giveaway exists
-    if (status === GiveawayStatus.OPEN) {
+    // If creating with OPEN status, check if another OPEN stream giveaway exists
+    if (status === StreamGiveawayStatus.OPEN) {
       await this.checkOnlyOneOpenGiveaway(userId);
     }
 
-    // Create giveaway with overrides in a transaction
-    const giveaway = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.giveaway.create({
+    // Create stream giveaway with overrides in a transaction
+    const streamGiveaway = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.streamGiveaway.create({
         data: {
           userId,
           name: dto.name,
@@ -330,9 +330,9 @@ export class GiveawayService {
 
       // Create ticket rule overrides if provided
       if (dto.ticketRuleOverrides && dto.ticketRuleOverrides.length > 0) {
-        await tx.giveawayTicketRuleOverride.createMany({
+        await tx.streamGiveawayTicketRuleOverride.createMany({
           data: dto.ticketRuleOverrides.map((override) => ({
-            giveawayId: created.id,
+            streamGiveawayId: created.id,
             role: override.role,
             ticketsPerUnit: override.ticketsPerUnit,
           })),
@@ -341,9 +341,9 @@ export class GiveawayService {
 
       // Create donation configs if provided
       if (dto.donationConfigs && dto.donationConfigs.length > 0) {
-        await tx.giveawayDonationConfig.createMany({
+        await tx.streamGiveawayDonationConfig.createMany({
           data: dto.donationConfigs.map((config) => ({
-            giveawayId: created.id,
+            streamGiveawayId: created.id,
             platform: config.platform,
             unitType: config.unitType,
             donationWindow: config.donationWindow,
@@ -353,9 +353,9 @@ export class GiveawayService {
 
       // Create donation rule overrides if provided
       if (dto.donationRuleOverrides && dto.donationRuleOverrides.length > 0) {
-        await tx.giveawayDonationRuleOverride.createMany({
+        await tx.streamGiveawayDonationRuleOverride.createMany({
           data: dto.donationRuleOverrides.map((override) => ({
-            giveawayId: created.id,
+            streamGiveawayId: created.id,
             platform: override.platform,
             unitType: override.unitType,
             unitSize: override.unitSize,
@@ -368,14 +368,14 @@ export class GiveawayService {
     });
 
     // Fetch with relations
-    return this.findOne(userId, giveaway.id);
+    return this.findOne(userId, streamGiveaway.id);
   }
 
   /**
-   * Get all giveaways for the authenticated admin user.
+   * Get all stream giveaways for the authenticated admin user.
    */
-  async findAll(userId: string): Promise<Giveaway[]> {
-    return this.prisma.giveaway.findMany({
+  async findAll(userId: string): Promise<StreamGiveaway[]> {
+    return this.prisma.streamGiveaway.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -387,10 +387,10 @@ export class GiveawayService {
   }
 
   /**
-   * Get a specific giveaway by ID, ensuring it belongs to the authenticated admin user.
+   * Get a specific stream giveaway by ID, ensuring it belongs to the authenticated admin user.
    */
-  async findOne(userId: string, id: string): Promise<Giveaway> {
-    const giveaway = await this.prisma.giveaway.findFirst({
+  async findOne(userId: string, id: string): Promise<StreamGiveaway> {
+    const streamGiveaway = await this.prisma.streamGiveaway.findFirst({
       where: {
         id,
         userId,
@@ -402,35 +402,35 @@ export class GiveawayService {
       },
     });
 
-    if (!giveaway) {
-      throw new NotFoundException(`Giveaway with ID ${id} not found`);
+    if (!streamGiveaway) {
+      throw new NotFoundException(`Stream giveaway with ID ${id} not found`);
     }
 
-    return giveaway;
+    return streamGiveaway;
   }
 
   /**
-   * Update a giveaway.
-   * Business rule: Only one OPEN giveaway per admin. Returns error if trying to set OPEN when another already exists.
+   * Update a stream giveaway.
+   * Business rule: Only one OPEN stream giveaway per admin. Returns error if trying to set OPEN when another already exists.
    */
-  async update(userId: string, id: string, dto: UpdateGiveawayDto): Promise<Giveaway> {
-    // Ensure the giveaway exists and belongs to the user
-    const existingGiveaway = await this.findOne(userId, id);
+  async update(userId: string, id: string, dto: UpdateGiveawayDto): Promise<StreamGiveaway> {
+    // Ensure the stream giveaway exists and belongs to the user
+    const existingStreamGiveaway = await this.findOne(userId, id);
 
     // Validate platforms if being updated
-    const platforms = dto.platforms ?? (existingGiveaway.platforms as ConnectedPlatform[]);
+    const platforms = dto.platforms ?? (existingStreamGiveaway.platforms as ConnectedPlatform[]);
     if (dto.platforms) {
       this.validatePlatforms(dto.platforms);
     }
 
     // Validate keyword is required and not empty
-    const keyword = dto.keyword ?? existingGiveaway.keyword;
+    const keyword = dto.keyword ?? existingStreamGiveaway.keyword;
     if (!keyword || keyword.trim().length === 0) {
-      throw new BadRequestException('Keyword is required for all giveaways');
+      throw new BadRequestException('Keyword is required for all stream giveaways');
     }
 
     // Normalize allowedRoles if any role-related fields are being updated
-    let allowedRoles = existingGiveaway.allowedRoles as string[];
+    let allowedRoles = existingStreamGiveaway.allowedRoles as string[];
     if (dto.subsOnly !== undefined || dto.nonSubsOnly !== undefined || dto.allowedRoles !== undefined) {
       allowedRoles = this.normalizeAllowedRoles({
         subsOnly: dto.subsOnly,
@@ -440,14 +440,14 @@ export class GiveawayService {
       });
     }
 
-    // If updating status to OPEN, check if another OPEN giveaway exists
-    if (dto.status === GiveawayStatus.OPEN) {
+    // If updating status to OPEN, check if another OPEN stream giveaway exists
+    if (dto.status === StreamGiveawayStatus.OPEN) {
       await this.checkOnlyOneOpenGiveaway(userId, id);
     }
 
-    // Update giveaway and overrides in a transaction
+    // Update stream giveaway and overrides in a transaction
     await this.prisma.$transaction(async (tx) => {
-      await tx.giveaway.update({
+      await tx.streamGiveaway.update({
         where: { id },
         data: {
           ...(dto.name !== undefined && { name: dto.name }),
@@ -462,8 +462,8 @@ export class GiveawayService {
       // Upsert ticket rule overrides if provided
       if (dto.ticketRuleOverrides !== undefined) {
         // Get existing overrides
-        const existing = await tx.giveawayTicketRuleOverride.findMany({
-          where: { giveawayId: id },
+        const existing = await tx.streamGiveawayTicketRuleOverride.findMany({
+          where: { streamGiveawayId: id },
         });
 
         const existingRoles = new Set(existing.map((o) => o.role));
@@ -472,9 +472,9 @@ export class GiveawayService {
         // Delete overrides that are no longer in the list
         const toDelete = existing.filter((o) => !newRoles.has(o.role));
         if (toDelete.length > 0) {
-          await tx.giveawayTicketRuleOverride.deleteMany({
+          await tx.streamGiveawayTicketRuleOverride.deleteMany({
             where: {
-              giveawayId: id,
+              streamGiveawayId: id,
               role: { in: toDelete.map((o) => o.role) },
             },
           });
@@ -483,10 +483,10 @@ export class GiveawayService {
         // Upsert the new/updated overrides
         await Promise.all(
           dto.ticketRuleOverrides.map((override) =>
-            tx.giveawayTicketRuleOverride.upsert({
+            tx.streamGiveawayTicketRuleOverride.upsert({
               where: {
-                giveawayId_role: {
-                  giveawayId: id,
+                streamGiveawayId_role: {
+                  streamGiveawayId: id,
                   role: override.role,
                 },
               },
@@ -494,7 +494,7 @@ export class GiveawayService {
                 ticketsPerUnit: override.ticketsPerUnit,
               },
               create: {
-                giveawayId: id,
+                streamGiveawayId: id,
                 role: override.role,
                 ticketsPerUnit: override.ticketsPerUnit,
               },
@@ -506,8 +506,8 @@ export class GiveawayService {
       // Upsert donation configs if provided
       if (dto.donationConfigs !== undefined) {
         // Get existing configs
-        const existing = await tx.giveawayDonationConfig.findMany({
-          where: { giveawayId: id },
+        const existing = await tx.streamGiveawayDonationConfig.findMany({
+          where: { streamGiveawayId: id },
         });
 
         const existingKeys = new Set(
@@ -522,9 +522,9 @@ export class GiveawayService {
           (c) => !newKeys.has(`${c.platform}:${c.unitType}`),
         );
         if (toDelete.length > 0) {
-          await tx.giveawayDonationConfig.deleteMany({
+          await tx.streamGiveawayDonationConfig.deleteMany({
             where: {
-              giveawayId: id,
+              streamGiveawayId: id,
               id: { in: toDelete.map((c) => c.id) },
             },
           });
@@ -533,10 +533,10 @@ export class GiveawayService {
         // Upsert the new/updated configs
         await Promise.all(
           dto.donationConfigs.map((config) =>
-            tx.giveawayDonationConfig.upsert({
+            tx.streamGiveawayDonationConfig.upsert({
               where: {
-                giveawayId_platform_unitType: {
-                  giveawayId: id,
+                streamGiveawayId_platform_unitType: {
+                  streamGiveawayId: id,
                   platform: config.platform,
                   unitType: config.unitType,
                 },
@@ -545,7 +545,7 @@ export class GiveawayService {
                 donationWindow: config.donationWindow,
               },
               create: {
-                giveawayId: id,
+                streamGiveawayId: id,
                 platform: config.platform,
                 unitType: config.unitType,
                 donationWindow: config.donationWindow,
@@ -558,8 +558,8 @@ export class GiveawayService {
       // Upsert donation rule overrides if provided
       if (dto.donationRuleOverrides !== undefined) {
         // Get existing overrides
-        const existing = await tx.giveawayDonationRuleOverride.findMany({
-          where: { giveawayId: id },
+        const existing = await tx.streamGiveawayDonationRuleOverride.findMany({
+          where: { streamGiveawayId: id },
         });
 
         const existingKeys = new Set(
@@ -575,11 +575,11 @@ export class GiveawayService {
         );
         if (toDelete.length > 0) {
           await Promise.all(
-            toDelete.map((o: { giveawayId: string; platform: ConnectedPlatform; unitType: string }) =>
-              tx.giveawayDonationRuleOverride.delete({
+            toDelete.map((o: { streamGiveawayId: string; platform: ConnectedPlatform; unitType: string }) =>
+              tx.streamGiveawayDonationRuleOverride.delete({
                 where: {
-                  giveawayId_platform_unitType: {
-                    giveawayId: o.giveawayId,
+                  streamGiveawayId_platform_unitType: {
+                    streamGiveawayId: o.streamGiveawayId,
                     platform: o.platform,
                     unitType: o.unitType,
                   },
@@ -592,10 +592,10 @@ export class GiveawayService {
         // Upsert the new/updated overrides
         await Promise.all(
           dto.donationRuleOverrides.map((override) =>
-            tx.giveawayDonationRuleOverride.upsert({
+            tx.streamGiveawayDonationRuleOverride.upsert({
               where: {
-                giveawayId_platform_unitType: {
-                  giveawayId: id,
+                streamGiveawayId_platform_unitType: {
+                  streamGiveawayId: id,
                   platform: override.platform,
                   unitType: override.unitType,
                 },
@@ -605,7 +605,7 @@ export class GiveawayService {
                 ticketsPerUnitSize: override.ticketsPerUnitSize,
               },
               create: {
-                giveawayId: id,
+                streamGiveawayId: id,
                 platform: override.platform,
                 unitType: override.unitType,
                 unitSize: override.unitSize,
@@ -621,55 +621,55 @@ export class GiveawayService {
   }
 
   /**
-   * Business rule: Ensure only one OPEN giveaway exists per admin user.
-   * Strategy: Return error if trying to create/update to OPEN when another OPEN giveaway already exists.
+   * Business rule: Ensure only one OPEN stream giveaway exists per admin user.
+   * Strategy: Return error if trying to create/update to OPEN when another OPEN stream giveaway already exists.
    */
   private async checkOnlyOneOpenGiveaway(userId: string, excludeId?: string): Promise<void> {
     const whereClause: any = {
       userId,
-      status: GiveawayStatus.OPEN,
+      status: StreamGiveawayStatus.OPEN,
       ...(excludeId && { id: { not: excludeId } }),
     };
 
-    const existingOpenGiveaway = await this.prisma.giveaway.findFirst({
+    const existingOpenStreamGiveaway = await this.prisma.streamGiveaway.findFirst({
       where: whereClause,
     });
 
-    if (existingOpenGiveaway) {
+    if (existingOpenStreamGiveaway) {
       throw new BadRequestException(
-        `You already have an open giveaway (${existingOpenGiveaway.name}). Only one giveaway can be OPEN at a time. Please close it first.`,
+        `You already have an open stream giveaway (${existingOpenStreamGiveaway.name}). Only one stream giveaway can be OPEN at a time. Please close it first.`,
       );
     }
   }
 
   /**
-   * Calculate tickets for a participant based on giveaway rules and ticket configuration.
+   * Calculate tickets for a participant based on stream giveaway rules and ticket configuration.
    * 
    * This method uses:
-   * 1. GiveawayTicketRuleOverride if exists (giveaway-specific overrides)
+   * 1. StreamGiveawayTicketRuleOverride if exists (stream giveaway-specific overrides)
    * 2. TicketGlobalRule (default rules for the admin user)
-   * 3. TicketGlobalDonationRule / GiveawayDonationRuleOverride for donation-based tickets
+   * 3. TicketGlobalDonationRule / StreamGiveawayDonationRuleOverride for donation-based tickets
    * 
    * Note: The donation window is ignored for now.
    * This will be used when integrating with the actual source of bits/gifts data.
    */
   async calculateTicketsForParticipant(input: {
-    giveawayId: string;
+    streamGiveawayId: string;
     platform: ConnectedPlatform;
     adminUserId: string;
     role: string; // NON_SUB, TWITCH_TIER_1, TWITCH_TIER_2, TWITCH_TIER_3, KICK_SUB, YOUTUBE_SUB
-    totalBits?: number; // total de bits válidos para esse sorteio
-    totalGiftSubs?: number; // total de gift subs válidos para esse sorteio
+    totalBits?: number; // total de bits válidos para esse stream giveaway
+    totalGiftSubs?: number; // total de gift subs válidos para esse stream giveaway
   }): Promise<{
     baseTickets: number;
     bitsTickets: number;
     giftTickets: number;
     totalTickets: number;
   }> {
-    // Get giveaway with donation configs to check which donation types are enabled
-    const giveaway = await this.prisma.giveaway.findFirst({
+    // Get stream giveaway with donation configs to check which donation types are enabled
+    const streamGiveaway = await this.prisma.streamGiveaway.findFirst({
       where: {
-        id: input.giveawayId,
+        id: input.streamGiveawayId,
         userId: input.adminUserId,
       },
       include: {
@@ -677,8 +677,8 @@ export class GiveawayService {
       },
     });
 
-    if (!giveaway) {
-      throw new NotFoundException(`Giveaway with ID ${input.giveawayId} not found`);
+    if (!streamGiveaway) {
+      throw new NotFoundException(`Stream giveaway with ID ${input.streamGiveawayId} not found`);
     }
 
     // 1. Calculate base tickets from role (check override first, then global rule)
@@ -690,11 +690,11 @@ export class GiveawayService {
       normalizedRole = 'NON_SUB';
     }
 
-    // Check for giveaway-specific override
-    const override = await this.prisma.giveawayTicketRuleOverride.findUnique({
+    // Check for stream giveaway-specific override
+    const override = await this.prisma.streamGiveawayTicketRuleOverride.findUnique({
       where: {
-        giveawayId_role: {
-          giveawayId: input.giveawayId,
+        streamGiveawayId_role: {
+          streamGiveawayId: input.streamGiveawayId,
           role: input.role, // Use original role for override lookup (overrides use platform-specific format)
         },
       },
@@ -721,15 +721,15 @@ export class GiveawayService {
 
     // 2. Calculate bits tickets (if enabled via donation config)
     let bitsTickets = 0;
-    const bitsConfig = giveaway.donationConfigs.find(
+    const bitsConfig = streamGiveaway.donationConfigs.find(
       (config) => config.platform === input.platform && config.unitType === 'BITS',
     );
     if (bitsConfig && input.totalBits && input.totalBits > 0) {
-      // Check for giveaway-specific override first
-      const donationOverride = await this.prisma.giveawayDonationRuleOverride.findUnique({
+      // Check for stream giveaway-specific override first
+      const donationOverride = await this.prisma.streamGiveawayDonationRuleOverride.findUnique({
         where: {
-          giveawayId_platform_unitType: {
-            giveawayId: input.giveawayId,
+          streamGiveawayId_platform_unitType: {
+            streamGiveawayId: input.streamGiveawayId,
             platform: input.platform,
             unitType: 'BITS',
           },
@@ -760,15 +760,15 @@ export class GiveawayService {
 
     // 3. Calculate gift sub tickets (if enabled via donation config)
     let giftTickets = 0;
-    const giftSubConfig = giveaway.donationConfigs.find(
+    const giftSubConfig = streamGiveaway.donationConfigs.find(
       (config) => config.platform === input.platform && config.unitType === 'GIFT_SUB',
     );
     if (giftSubConfig && input.totalGiftSubs && input.totalGiftSubs > 0) {
-      // Check for giveaway-specific override first
-      const donationOverride = await this.prisma.giveawayDonationRuleOverride.findUnique({
+      // Check for stream giveaway-specific override first
+      const donationOverride = await this.prisma.streamGiveawayDonationRuleOverride.findUnique({
         where: {
-          giveawayId_platform_unitType: {
-            giveawayId: input.giveawayId,
+          streamGiveawayId_platform_unitType: {
+            streamGiveawayId: input.streamGiveawayId,
             platform: input.platform,
             unitType: 'GIFT_SUB',
           },
@@ -807,5 +807,20 @@ export class GiveawayService {
       giftTickets,
       totalTickets,
     };
+  }
+
+  /**
+   * Delete a stream giveaway.
+   * Ensures the stream giveaway belongs to the authenticated admin user.
+   * Related data (participants, configs, overrides) will be deleted automatically via cascade.
+   */
+  async remove(userId: string, id: string): Promise<void> {
+    // Ensure the stream giveaway exists and belongs to the user
+    const streamGiveaway = await this.findOne(userId, id);
+
+    // Delete the stream giveaway (cascade will handle related records)
+    await this.prisma.streamGiveaway.delete({
+      where: { id: streamGiveaway.id },
+    });
   }
 }

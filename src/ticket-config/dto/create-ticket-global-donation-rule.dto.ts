@@ -5,7 +5,7 @@ import { ConnectedPlatform } from '@prisma/client';
 /**
  * DTO for creating/updating global donation rules.
  * These rules define extra ticket increments based on quantity of bits/coins/gifts.
- * Time window (daily/weekly/monthly) is not defined here; it will be set per giveaway.
+ * Time window (daily/weekly/monthly) is not defined here; it will be set per stream giveaway.
  * 
  * Examples:
  *   - Bits: unitType="BITS", unitSize=100, ticketsPerUnitSize=1 → 100 bits = 1 ticket

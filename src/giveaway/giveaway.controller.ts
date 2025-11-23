@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   UseGuards,
@@ -17,10 +18,10 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { User, UserRole, Giveaway } from '@prisma/client';
+import { User, UserRole, StreamGiveaway } from '@prisma/client';
 
-@ApiTags('giveaways')
-@Controller('giveaways')
+@ApiTags('stream-giveaways')
+@Controller('stream-giveaways')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth('JWT-auth')
 export class GiveawayController {
@@ -115,7 +116,7 @@ export class GiveawayController {
   async create(
     @CurrentUser() user: User,
     @Body() dto: CreateGiveawayDto,
-  ): Promise<Giveaway> {
+  ): Promise<StreamGiveaway> {
     return this.giveawayService.create(user.id, dto);
   }
 
@@ -197,7 +198,7 @@ export class GiveawayController {
     status: 403,
     description: 'Forbidden - user is not an admin',
   })
-  async findAll(@CurrentUser() user: User): Promise<Giveaway[]> {
+  async findAll(@CurrentUser() user: User): Promise<StreamGiveaway[]> {
     return this.giveawayService.findAll(user.id);
   }
 
@@ -283,7 +284,7 @@ export class GiveawayController {
   async findOne(
     @CurrentUser() user: User,
     @Param('id') id: string,
-  ): Promise<Giveaway> {
+  ): Promise<StreamGiveaway> {
     return this.giveawayService.findOne(user.id, id);
   }
 
@@ -379,8 +380,38 @@ export class GiveawayController {
     @CurrentUser() user: User,
     @Param('id') id: string,
     @Body() dto: UpdateGiveawayDto,
-  ): Promise<Giveaway> {
+  ): Promise<StreamGiveaway> {
     return this.giveawayService.update(user.id, id, dto);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Delete a stream giveaway',
+    description: 'Deletes a stream giveaway. Ensures the giveaway belongs to the authenticated admin user. All related data (participants, configs, overrides) will be deleted as well.',
+  })
+  @ApiResponse({
+    status: 204,
+    description: 'Stream giveaway deleted successfully',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthenticated - invalid or missing token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user is not an admin',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Stream giveaway not found',
+  })
+  async remove(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ): Promise<void> {
+    await this.giveawayService.remove(user.id, id);
   }
 }
 

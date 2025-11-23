@@ -10,7 +10,7 @@ export class TicketConfigService {
 
   /**
    * Get all global ticket rules and donation rules for a user.
-   * These rules serve as defaults for all giveaways.
+   * These rules serve as defaults for all stream giveaways.
    * 
    * Global ticket rules define tickets based on the user's base subscription status.
    * Donation rules define extra ticket increments based on quantity of bits/coins/gifts.
@@ -56,7 +56,7 @@ export class TicketConfigService {
    * These rules define tickets based on the user's base subscription status.
    * Roles represent the "base state" of the user: non-sub, twitch tier, kick sub, youtube sub.
    * Gift subs are handled in TicketGlobalDonationRule, not here.
-   * These are default rules applied to all giveaways.
+   * These are default rules applied to all stream giveaways.
    * 
    * Accepts platform-specific NON_SUB formats (TWITCH_NON_SUB, KICK_NON_SUB, YOUTUBE_NON_SUB)
    * and converts them to NON_SUB + platform for storage.
@@ -99,11 +99,11 @@ export class TicketConfigService {
   /**
    * Upsert (create or update) global donation rules for a user.
    * These rules define extra ticket increments based on quantity of bits/coins/gifts.
-   * Time window (daily/weekly/monthly) is not defined here; it will be set per giveaway.
+   * Time window (daily/weekly/monthly) is not defined here; it will be set per stream giveaway.
    * Examples:
    *   - Bits: unitType="BITS", unitSize=100, ticketsPerUnitSize=1 → 100 bits = 1 ticket
    *   - Gift subs: unitType="GIFT_SUB", unitSize=1, ticketsPerUnitSize=4 → 1 gift = 4 tickets
-   * These are default rules applied to all giveaways.
+   * These are default rules applied to all stream giveaways.
    */
   async upsertGlobalDonationRules(
     userId: string,

@@ -8,15 +8,15 @@ import { CreateGiveawayDonationConfigDto } from './create-giveaway-donation-conf
 
 export class CreateGiveawayDto {
   @ApiProperty({
-    description: 'Name of the giveaway',
-    example: 'Summer Giveaway 2024',
+    description: 'Name of the stream giveaway',
+    example: 'Summer Stream Giveaway 2024',
   })
   @IsString()
   name: string;
 
   @ApiProperty({
-    description: 'Description of the giveaway',
-    example: 'A summer giveaway for all subscribers',
+    description: 'Description of the stream giveaway',
+    example: 'A summer stream giveaway for all subscribers',
     required: false,
   })
   @IsOptional()
@@ -24,7 +24,7 @@ export class CreateGiveawayDto {
   description?: string;
 
   @ApiProperty({
-    description: 'Initial status of the giveaway (defaults to DRAFT if not provided)',
+    description: 'Initial status of the stream giveaway (defaults to DRAFT if not provided)',
     enum: ['DRAFT', 'OPEN'],
     example: 'DRAFT',
     required: false,
@@ -34,7 +34,7 @@ export class CreateGiveawayDto {
   status?: 'DRAFT' | 'OPEN';
 
   @ApiProperty({
-    description: 'Platforms where the giveaway will run (stream platforms only: TWITCH, KICK, YOUTUBE)',
+    description: 'Platforms where the stream giveaway will run (stream platforms only: TWITCH, KICK, YOUTUBE)',
     enum: ConnectedPlatform,
     isArray: true,
     example: [ConnectedPlatform.TWITCH, ConnectedPlatform.KICK],
@@ -45,7 +45,7 @@ export class CreateGiveawayDto {
   platforms: ConnectedPlatform[];
 
   @ApiProperty({
-    description: 'Keyword for the giveaway (required for all STREAM giveaways)',
+    description: 'Keyword for the stream giveaway (required for all stream giveaways)',
     example: '!enter',
   })
   @IsString()
@@ -83,7 +83,7 @@ export class CreateGiveawayDto {
 
   // Step 3: Ticket rule overrides
   @ApiProperty({
-    description: 'Optional ticket rule overrides for this giveaway',
+    description: 'Optional ticket rule overrides for this stream giveaway',
     type: [CreateGiveawayTicketRuleOverrideDto],
     required: false,
   })
@@ -95,7 +95,7 @@ export class CreateGiveawayDto {
 
   // Step 5: Donations configuration (pivot table)
   @ApiProperty({
-    description: 'Donation configurations for this giveaway (platform-specific)',
+    description: 'Donation configurations for this stream giveaway (platform-specific)',
     type: [CreateGiveawayDonationConfigDto],
     required: false,
   })
@@ -107,7 +107,7 @@ export class CreateGiveawayDto {
 
   // Step 4: Donation rule overrides
   @ApiProperty({
-    description: 'Optional donation rule overrides for this giveaway',
+    description: 'Optional donation rule overrides for this stream giveaway',
     type: [CreateGiveawayDonationRuleOverrideDto],
     required: false,
   })

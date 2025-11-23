@@ -24,7 +24,7 @@ enum ConnectedPlatform {
   TIKTOK
 }
 
-enum GiveawayStatus {
+enum StreamGiveawayStatus {
   DRAFT
   OPEN
   CLOSED
@@ -49,7 +49,7 @@ model User {
   accounts                ConnectedAccount[]
   ticketGlobalRules       TicketGlobalRule[]
   ticketGlobalDonationRules TicketGlobalDonationRule[]
-  giveaways               Giveaway[]
+  streamGiveaways         StreamGiveaway[]
 
   @@unique([provider, providerId])
 }
@@ -72,7 +72,7 @@ model ConnectedAccount {
   @@unique([platform, externalChannelId])
 }
 
-// Global ticket rules - base status roles for all giveaways
+// Global ticket rules - base status roles for all stream giveaways
 // These rules define how many tickets each user role/tier receives based on their subscription status
 // Roles represent the "base state" of the user: non-sub, twitch tier, kick sub, youtube sub
 // NON_SUB must be platform-specific (e.g., NON_SUB for Twitch, NON_SUB for Kick)
@@ -91,7 +91,7 @@ model TicketGlobalRule {
 
 // Global donation rules - extra ticket increments based on donations/gifts
 // These rules define ticket bonuses based on quantity of bits/coins/gifts
-// Time window (daily/weekly/monthly) is not defined here; it will be set per giveaway
+// Time window (daily/weekly/monthly) is not defined here; it will be set per stream giveaway
 // Examples:
 //   - Bits: unitType="BITS", unitSize=100, ticketsPerUnitSize=1 → 100 bits = 1 ticket
 //   - Gift subs: unitType="GIFT_SUB", unitSize=1, ticketsPerUnitSize=4 → 1 gift = 4 tickets
@@ -110,12 +110,12 @@ model TicketGlobalDonationRule {
   @@unique([userId, platform, unitType])
 }
 
-model Giveaway {
+model StreamGiveaway {
   id        String          @id @default(uuid())
   userId    String
   name      String
   description String?
-  status    GiveawayStatus
+  status    StreamGiveawayStatus
   platforms Json            // Array<ConnectedPlatform> (TWITCH/KICK/YOUTUBE)
   keyword   String          // OBRIGATÓRIA (STREAMS)
 
@@ -126,66 +126,66 @@ model Giveaway {
   updatedAt       DateTime @updatedAt
 
   user                 User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ticketRuleOverrides  GiveawayTicketRuleOverride[]
-  donationRuleOverrides GiveawayDonationRuleOverride[]
-  donationConfigs      GiveawayDonationConfig[]
-  participants         GiveawayParticipant[]
+  ticketRuleOverrides  StreamGiveawayTicketRuleOverride[]
+  donationRuleOverrides StreamGiveawayDonationRuleOverride[]
+  donationConfigs      StreamGiveawayDonationConfig[]
+  participants         StreamGiveawayParticipant[]
 
   @@index([userId, status])
 }
 
-model GiveawayTicketRuleOverride {
+model StreamGiveawayTicketRuleOverride {
   id             String   @id @default(uuid())
-  giveawayId     String
+  streamGiveawayId     String
   role           String   // mesma semântica do TicketGlobalRule.role
   ticketsPerUnit Int
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-  giveaway       Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
-  @@unique([giveawayId, role])
+  streamGiveaway       StreamGiveaway @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+  @@unique([streamGiveawayId, role])
 }
 
-model GiveawayDonationRuleOverride {
+model StreamGiveawayDonationRuleOverride {
   id                 String            @id @default(uuid())
-  giveawayId         String
+  streamGiveawayId         String
   platform           ConnectedPlatform
   unitType           String            // "BITS" | "GIFT_SUB" | "KICK_COINS" | "SUPERCHAT"
   unitSize           Int
   ticketsPerUnitSize Int
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
-  giveaway           Giveaway          @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
-  @@unique([giveawayId, platform, unitType])
+  streamGiveaway           StreamGiveaway          @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+  @@unique([streamGiveawayId, platform, unitType])
 }
 
-// Configuração de doações por sorteio (tabela pivô)
+// Configuração de doações por stream giveaway (tabela pivô)
 // Define quais tipos de doação estão habilitados e suas janelas de tempo
-model GiveawayDonationConfig {
+model StreamGiveawayDonationConfig {
   id             String            @id @default(uuid())
-  giveawayId     String
+  streamGiveawayId     String
   platform       ConnectedPlatform // TWITCH, KICK, YOUTUBE
   unitType       String            // "BITS" | "GIFT_SUB" | "KICK_COINS" | "SUPERCHAT"
   donationWindow DonationWindow    // DAILY | WEEKLY | MONTHLY
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
-  giveaway       Giveaway          @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
-  @@unique([giveawayId, platform, unitType])
+  streamGiveaway       StreamGiveaway          @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+  @@unique([streamGiveawayId, platform, unitType])
 }
 
-model GiveawayParticipant {
+model StreamGiveawayParticipant {
   id             String             @id @default(uuid())
-  giveawayId     String
+  streamGiveawayId     String
   platform       ConnectedPlatform
   externalUserId String
   username       String
   isSub          Boolean
   subTier        Int?
-  donationAmount Int?               // total de "unidades" (ex.: bits) considerados pra esse sorteio (se aplicável)
+  donationAmount Int?               // total de "unidades" (ex.: bits) considerados pra esse stream giveaway (se aplicável)
   tickets        Int
   sourceDetails  Json?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
-  giveaway       Giveaway          @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
-  @@index([giveawayId])
-  @@index([giveawayId, platform, externalUserId])
+  streamGiveaway       StreamGiveaway          @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+  @@index([streamGiveawayId])
+  @@index([streamGiveawayId, platform, externalUserId])
 }
