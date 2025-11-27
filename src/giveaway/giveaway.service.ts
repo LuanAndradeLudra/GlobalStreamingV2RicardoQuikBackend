@@ -940,13 +940,39 @@ export class GiveawayService {
     // Ensure the stream giveaway exists and belongs to the user
     const streamGiveaway = await this.findOne(userId, streamGiveawayId);
     
-    // Only allow drawing when status is OPEN
-    if (streamGiveaway.status !== StreamGiveawayStatus.OPEN) {
-      throw new BadRequestException('Can only draw winners when giveaway status is OPEN');
+    // Only allow drawing when status is OPEN (first draw) or DONE (repick)
+    if (streamGiveaway.status !== StreamGiveawayStatus.OPEN && streamGiveaway.status !== 'DONE' as any) {
+      throw new BadRequestException('Can only draw winners when giveaway status is OPEN or DONE');
+    }
+
+    // If this is a repick (status is DONE), mark current winner as REPICK first
+    if (streamGiveaway.status === 'DONE' as any) {
+      await (this.prisma as any).streamGiveawayWinner.updateMany({
+        where: {
+          streamGiveawayId,
+          status: 'WINNER' as any,
+        },
+        data: {
+          status: 'REPICK' as any,
+        },
+      });
     }
 
     // Fetch all participants ordered by creation date (or ID as fallback)
-    const participants = await this.prisma.streamGiveawayParticipant.findMany({
+    // Exclude participants that have been repicked (have a winner entry with status REPICK)
+    const repickedWinners = await (this.prisma as any).streamGiveawayWinner.findMany({
+      where: {
+        streamGiveawayId,
+        status: 'REPICK' as any,
+      },
+      select: {
+        winnerParticipantId: true,
+      },
+    });
+
+    const repickedParticipantIds = new Set(repickedWinners.map((w: any) => w.winnerParticipantId));
+
+    const allParticipants = await this.prisma.streamGiveawayParticipant.findMany({
       where: { streamGiveawayId },
       orderBy: [
         { createdAt: 'asc' },
@@ -954,15 +980,23 @@ export class GiveawayService {
       ],
     });
 
+    // Filter out repicked participants
+    const participants = allParticipants.filter((p) => !repickedParticipantIds.has(p.id));
+
     if (participants.length === 0) {
-      throw new BadRequestException('Cannot draw winner: no participants found');
+      throw new BadRequestException('Cannot draw winner: no eligible participants found (all have been repicked)');
     }
 
-    // Calculate ticket ranges
+    // Calculate ticket ranges - ensure repicked participants are not included
     const ranges: Array<{ id: string; display: string; start: number; end: number }> = [];
     let start = 0;
 
     for (const participant of participants) {
+      // Double check: skip if this participant is repicked
+      if (repickedParticipantIds.has(participant.id)) {
+        continue;
+      }
+
       const display = `${participant.username}|${participant.method}`;
       const end = start + participant.tickets - 1;
       ranges.push({
@@ -1001,23 +1035,12 @@ export class GiveawayService {
     // Generate Random.org verification URL
     const verificationUrl = this.generateRandomOrgVerificationUrl(randomPayload, signature);
 
-    // Check if this is the first draw (no previous winners)
+    // Check if this is the first draw (no previous winners and status is OPEN)
     const previousWinners = await (this.prisma as any).streamGiveawayWinner.findMany({
       where: { streamGiveawayId },
     });
 
-    const isFirstDraw = previousWinners.length === 0;
-
-    // Mark previous winners as REPICK
-    await (this.prisma as any).streamGiveawayWinner.updateMany({
-      where: {
-        streamGiveawayId,
-        status: 'WINNER' as any,
-      },
-      data: {
-        status: 'REPICK' as any,
-      },
-    });
+    const isFirstDraw = previousWinners.length === 0 && streamGiveaway.status === StreamGiveawayStatus.OPEN;
 
     // Save new winner to database
     await (this.prisma as any).streamGiveawayWinner.create({
