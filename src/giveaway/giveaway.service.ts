@@ -850,6 +850,7 @@ export class GiveawayService {
   /**
    * Add a single participant entry to a stream giveaway.
    * Allows multiple entries per user with different methods.
+   * Only allowed when status is OPEN.
    */
   async addParticipant(
     userId: string,
@@ -857,7 +858,12 @@ export class GiveawayService {
     dto: CreateParticipantDto,
   ): Promise<StreamGiveawayParticipant> {
     // Ensure the stream giveaway exists and belongs to the user
-    await this.findOne(userId, streamGiveawayId);
+    const streamGiveaway = await this.findOne(userId, streamGiveawayId);
+    
+    // Only allow adding participants when status is OPEN
+    if (streamGiveaway.status !== StreamGiveawayStatus.OPEN) {
+      throw new BadRequestException('Can only add participants when giveaway status is OPEN');
+    }
 
     // Create the participant entry
     return this.prisma.streamGiveawayParticipant.create({
@@ -877,6 +883,7 @@ export class GiveawayService {
   /**
    * Add multiple participant entries to a stream giveaway in batch.
    * Allows multiple entries per user with different methods.
+   * Only allowed when status is OPEN.
    */
   async addParticipantsBatch(
     userId: string,
@@ -884,7 +891,12 @@ export class GiveawayService {
     dto: CreateParticipantsBatchDto,
   ): Promise<StreamGiveawayParticipant[]> {
     // Ensure the stream giveaway exists and belongs to the user
-    await this.findOne(userId, streamGiveawayId);
+    const streamGiveaway = await this.findOne(userId, streamGiveawayId);
+    
+    // Only allow adding participants when status is OPEN
+    if (streamGiveaway.status !== StreamGiveawayStatus.OPEN) {
+      throw new BadRequestException('Can only add participants when giveaway status is OPEN');
+    }
 
     // Create all participant entries in a transaction
     return this.prisma.$transaction(
