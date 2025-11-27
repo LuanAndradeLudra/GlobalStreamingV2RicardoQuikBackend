@@ -399,7 +399,7 @@ export class GiveawayService {
    * Includes all related data: ticket rule overrides, donation rule overrides, donation configs, and participants.
    */
   async findOne(userId: string, id: string): Promise<StreamGiveaway> {
-    const streamGiveaway = await this.prisma.streamGiveaway.findFirst({
+    const streamGiveaway = await (this.prisma as any).streamGiveaway.findFirst({
       where: {
         id,
         userId,
@@ -413,6 +413,14 @@ export class GiveawayService {
             { createdAt: 'desc' },
             { tickets: 'desc' },
           ],
+        },
+        winners: {
+          include: {
+            winnerParticipant: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
         },
       },
     });
