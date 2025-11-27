@@ -938,7 +938,12 @@ export class GiveawayService {
    */
   async draw(userId: string, streamGiveawayId: string): Promise<DrawResponseDto> {
     // Ensure the stream giveaway exists and belongs to the user
-    await this.findOne(userId, streamGiveawayId);
+    const streamGiveaway = await this.findOne(userId, streamGiveawayId);
+    
+    // Only allow drawing when status is OPEN
+    if (streamGiveaway.status !== StreamGiveawayStatus.OPEN) {
+      throw new BadRequestException('Can only draw winners when giveaway status is OPEN');
+    }
 
     // Fetch all participants ordered by creation date (or ID as fallback)
     const participants = await this.prisma.streamGiveawayParticipant.findMany({
@@ -996,6 +1001,13 @@ export class GiveawayService {
     // Generate Random.org verification URL
     const verificationUrl = this.generateRandomOrgVerificationUrl(randomPayload, signature);
 
+    // Check if this is the first draw (no previous winners)
+    const previousWinners = await (this.prisma as any).streamGiveawayWinner.findMany({
+      where: { streamGiveawayId },
+    });
+
+    const isFirstDraw = previousWinners.length === 0;
+
     // Mark previous winners as REPICK
     await (this.prisma as any).streamGiveawayWinner.updateMany({
       where: {
@@ -1024,6 +1036,14 @@ export class GiveawayService {
         verified,
       },
     });
+
+    // If this is the first draw, change status from OPEN to DONE
+    if (isFirstDraw) {
+      await this.prisma.streamGiveaway.update({
+        where: { id: streamGiveawayId },
+        data: { status: 'DONE' as any },
+      });
+    }
 
     // Return audit payload
     return {

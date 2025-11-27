@@ -27,6 +27,7 @@ enum ConnectedPlatform {
 enum StreamGiveawayStatus {
   DRAFT
   OPEN
+  DONE
   CLOSED
 }
 
