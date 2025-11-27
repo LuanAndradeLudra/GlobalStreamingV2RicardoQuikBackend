@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGiveawayDto } from './dto/create-giveaway.dto';
 import { UpdateGiveawayDto } from './dto/update-giveaway.dto';
@@ -8,10 +9,15 @@ import { CreateGiveawayDonationRuleOverrideDto } from './dto/create-giveaway-don
 import { CreateGiveawayDonationConfigDto } from './dto/create-giveaway-donation-config.dto';
 import { CreateParticipantDto } from './dto/create-participant.dto';
 import { CreateParticipantsBatchDto } from './dto/create-participants-batch.dto';
+import { DrawResponseDto } from './dto/draw-response.dto';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class GiveawayService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {}
 
   /**
    * Get the universe of valid roles for given platforms.
@@ -908,5 +914,269 @@ export class GiveawayService {
         { tickets: 'desc' },
       ],
     });
+  }
+
+  /**
+   * Draw a winner from a stream giveaway using Random.org Signed API.
+   * 
+   * Steps:
+   * 1. Fetch all participants ordered by creation/ID
+   * 2. Calculate ticket ranges (start, end) for each participant
+   * 3. Generate hash of the participant list
+   * 4. Call Random.org to get a random number
+   * 5. Find winner using binary search
+   * 6. Verify Random.org signature (optional)
+   * 7. Return audit payload
+   */
+  async draw(userId: string, streamGiveawayId: string): Promise<DrawResponseDto> {
+    // Ensure the stream giveaway exists and belongs to the user
+    await this.findOne(userId, streamGiveawayId);
+
+    // Fetch all participants ordered by creation date (or ID as fallback)
+    const participants = await this.prisma.streamGiveawayParticipant.findMany({
+      where: { streamGiveawayId },
+      orderBy: [
+        { createdAt: 'asc' },
+        { id: 'asc' },
+      ],
+    });
+
+    if (participants.length === 0) {
+      throw new BadRequestException('Cannot draw winner: no participants found');
+    }
+
+    // Calculate ticket ranges
+    const ranges: Array<{ id: string; display: string; start: number; end: number }> = [];
+    let start = 0;
+
+    for (const participant of participants) {
+      const display = `${participant.username}|${participant.method}`;
+      const end = start + participant.tickets - 1;
+      ranges.push({
+        id: participant.id,
+        display,
+        start,
+        end,
+      });
+      start = end + 1;
+    }
+
+    const totalTickets = start; // start is now the total count
+
+    // Generate hash of the participant list
+    const listLines = ranges.map((r) => `${r.id};${r.display};${r.start};${r.end}`).join('\n');
+    const hashAlgo = this.configService.get<string>('LIST_HASH_ALGO', 'SHA256').toUpperCase();
+    const hash = this.calculateHash(listLines, hashAlgo);
+
+    // Call Random.org Signed API
+    const randomOrgApiKey = this.configService.get<string>('RANDOM_ORG_API_KEY');
+    if (!randomOrgApiKey) {
+      throw new BadRequestException('RANDOM_ORG_API_KEY is not configured');
+    }
+
+    const randomResult = await this.callRandomOrg(randomOrgApiKey, totalTickets);
+    const drawnNumber = randomResult.random.data[0];
+    const randomPayload = randomResult.random;
+    const signature = randomResult.signature;
+
+    // Verify signature (optional but recommended)
+    const verified = await this.verifyRandomOrgSignature(randomPayload, signature);
+
+    // Find winner using binary search
+    const winner = this.findWinnerByBinarySearch(ranges, drawnNumber);
+
+    // Generate Random.org verification URL
+    const verificationUrl = this.generateRandomOrgVerificationUrl(randomPayload, signature);
+
+    // Mark previous winners as REPICK
+    await (this.prisma as any).streamGiveawayWinner.updateMany({
+      where: {
+        streamGiveawayId,
+        status: 'WINNER' as any,
+      },
+      data: {
+        status: 'REPICK' as any,
+      },
+    });
+
+    // Save new winner to database
+    await (this.prisma as any).streamGiveawayWinner.create({
+      data: {
+        streamGiveawayId,
+        winnerParticipantId: winner.id,
+        status: 'WINNER' as any,
+        participantRanges: ranges,
+        totalTickets,
+        listHashAlgo: hashAlgo,
+        listHash: hash,
+        randomOrgRandom: randomPayload,
+        randomOrgSignature: signature,
+        randomOrgVerificationUrl: verificationUrl,
+        drawnNumber,
+        verified,
+      },
+    });
+
+    // Return audit payload
+    return {
+      ticket: streamGiveawayId,
+      totalTickets,
+      listHashAlgo: hashAlgo,
+      listHash: hash,
+      draw: {
+        number: drawnNumber,
+        source: 'random.org/signed',
+        random: randomPayload,
+        signature,
+        verified,
+      },
+      winner: {
+        id: winner.id,
+        display: winner.display,
+        start: winner.start,
+        end: winner.end,
+        index: drawnNumber,
+      },
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Generate Random.org verification URL.
+   * Format: https://api.random.org/signatures/form?format=json&random=<base64>&signature=<url_encoded>
+   */
+  private generateRandomOrgVerificationUrl(random: any, signature: string): string {
+    // Encode random payload as base64
+    const randomJson = JSON.stringify(random);
+    const randomBase64 = Buffer.from(randomJson).toString('base64');
+
+    // URL encode the signature
+    const signatureEncoded = encodeURIComponent(signature);
+
+    return `https://api.random.org/signatures/form?format=json&random=${randomBase64}&signature=${signatureEncoded}`;
+  }
+
+  /**
+   * Calculate hash of a string using the specified algorithm.
+   */
+  private calculateHash(data: string, algorithm: string): string {
+    if (algorithm === 'MD5') {
+      return crypto.createHash('md5').update(data).digest('hex');
+    }
+    // Default to SHA-256
+    return crypto.createHash('sha256').update(data).digest('hex');
+  }
+
+  /**
+   * Call Random.org Signed API to generate a random integer.
+   */
+  private async callRandomOrg(apiKey: string, max: number): Promise<{
+    random: any;
+    signature: string;
+  }> {
+    const requestBody = {
+      jsonrpc: '2.0',
+      method: 'generateSignedIntegers',
+      params: {
+        apiKey,
+        n: 1,
+        min: 0,
+        max: max - 1,
+        replacement: true,
+      },
+      id: 1,
+    };
+
+    const response = await fetch('https://api.random.org/json-rpc/4/invoke', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      throw new BadRequestException(`Random.org API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new BadRequestException(`Random.org API error: ${data.error.message || 'Unknown error'}`);
+    }
+
+    return {
+      random: data.result.random,
+      signature: data.result.signature,
+    };
+  }
+
+  /**
+   * Verify Random.org signature.
+   */
+  private async verifyRandomOrgSignature(random: any, signature: string): Promise<boolean> {
+    try {
+      const requestBody = {
+        jsonrpc: '2.0',
+        method: 'verify',
+        params: {
+          random,
+          signature,
+        },
+        id: 1,
+      };
+
+      const response = await fetch('https://api.random.org/json-rpc/4/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const data = await response.json();
+
+      if (data.error) {
+        return false;
+      }
+
+      return data.result.authentic === true;
+    } catch (error) {
+      // If verification fails, return false but don't throw
+      return false;
+    }
+  }
+
+  /**
+   * Find winner using binary search on ticket ranges.
+   */
+  private findWinnerByBinarySearch(
+    ranges: Array<{ id: string; display: string; start: number; end: number }>,
+    ticketIndex: number,
+  ): { id: string; display: string; start: number; end: number } {
+    let left = 0;
+    let right = ranges.length - 1;
+
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      const range = ranges[mid];
+
+      if (ticketIndex >= range.start && ticketIndex <= range.end) {
+        return range;
+      }
+
+      if (ticketIndex < range.start) {
+        right = mid - 1;
+      } else {
+        left = mid + 1;
+      }
+    }
+
+    // This should never happen if ranges are correct, but throw error as fallback
+    throw new BadRequestException(`Could not find winner for ticket index ${ticketIndex}`);
   }
 }

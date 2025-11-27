@@ -16,6 +16,7 @@ import { CreateGiveawayDto } from './dto/create-giveaway.dto';
 import { UpdateGiveawayDto } from './dto/update-giveaway.dto';
 import { CreateParticipantDto } from './dto/create-participant.dto';
 import { CreateParticipantsBatchDto } from './dto/create-participants-batch.dto';
+import { DrawResponseDto } from './dto/draw-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -592,6 +593,45 @@ export class GiveawayController {
     @Param('id') id: string,
   ): Promise<StreamGiveawayParticipant[]> {
     return this.giveawayService.getParticipants(user.id, id);
+  }
+
+  @Post(':id/draw')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Draw a winner from a stream giveaway',
+    description:
+      'Draws a winner from a stream giveaway using Random.org Signed API. ' +
+      'Calculates ticket ranges for all participants, generates a hash of the participant list, ' +
+      'calls Random.org to get a random number, and finds the winner using binary search. ' +
+      'Returns an audit payload with all draw details including verification.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Winner drawn successfully',
+    type: DrawResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - no participants found or Random.org API error',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthenticated - invalid or missing token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user is not an admin',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Stream giveaway not found',
+  })
+  async draw(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ): Promise<DrawResponseDto> {
+    return this.giveawayService.draw(user.id, id);
   }
 }
 

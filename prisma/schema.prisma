@@ -51,6 +51,11 @@ enum EntryMethod {
   YOUTUBE_NON_SUB
 }
 
+enum WinnerStatus {
+  WINNER
+  REPICK
+}
+
 model User {
   id                      String                      @id @default(uuid())
   email                   String                      @unique
@@ -145,6 +150,7 @@ model StreamGiveaway {
   donationRuleOverrides StreamGiveawayDonationRuleOverride[]
   donationConfigs      StreamGiveawayDonationConfig[]
   participants         StreamGiveawayParticipant[]
+  winners              StreamGiveawayWinner[]
 
   @@index([userId, status])
 }
@@ -203,4 +209,25 @@ model StreamGiveawayParticipant {
   @@index([streamGiveawayId])
   @@index([streamGiveawayId, platform, externalUserId])
   @@index([streamGiveawayId, externalUserId, method]) // Permite múltiplas entradas do mesmo usuário com métodos diferentes
+}
+
+model StreamGiveawayWinner {
+  id                    String             @id @default(uuid())
+  streamGiveawayId      String
+  winnerParticipantId   String             // ID do participante vencedor
+  status                WinnerStatus        // WINNER ou REPICK
+  participantRanges     Json               // Array de ranges: [{id, display, start, end}]
+  totalTickets          Int                // Total de tickets no sorteio
+  listHashAlgo          String             // SHA256 ou MD5
+  listHash              String             // Hash da lista de participantes
+  randomOrgRandom       Json               // Payload completo do Random.org (result.random)
+  randomOrgSignature    String             // Assinatura do Random.org
+  randomOrgVerificationUrl String          // URL para verificar a assinatura
+  drawnNumber           Int                // Número sorteado
+  verified              Boolean            // Se a assinatura foi verificada
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  streamGiveaway        StreamGiveaway     @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+  @@index([streamGiveawayId])
+  @@index([streamGiveawayId, status])
 }
