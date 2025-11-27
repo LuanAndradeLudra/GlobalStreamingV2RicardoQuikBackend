@@ -24,7 +24,7 @@ export class CreateGiveawayDto {
   description?: string;
 
   @ApiProperty({
-    description: 'Initial status of the stream giveaway (defaults to DRAFT if not provided)',
+    description: 'Initial status of the stream giveaway (defaults to DRAFT if not provided). DONE cannot be set manually.',
     enum: ['DRAFT', 'OPEN'],
     example: 'DRAFT',
     required: false,

@@ -439,6 +439,11 @@ export class GiveawayService {
   async update(userId: string, id: string, dto: UpdateGiveawayDto): Promise<StreamGiveaway> {
     // Ensure the stream giveaway exists and belongs to the user
     const existingStreamGiveaway = await this.findOne(userId, id);
+    
+    // Cannot edit giveaways with status DONE
+    if (existingStreamGiveaway.status === 'DONE' as any) {
+      throw new BadRequestException('Cannot edit giveaway with status DONE');
+    }
 
     // Validate platforms if being updated
     const platforms = dto.platforms ?? (existingStreamGiveaway.platforms as ConnectedPlatform[]);
@@ -461,6 +466,11 @@ export class GiveawayService {
         allowedRoles: dto.allowedRoles,
         platforms,
       });
+    }
+
+    // Validate status: DONE cannot be set manually (only through draw)
+    if (dto.status === 'DONE' as any) {
+      throw new BadRequestException('Status DONE cannot be set manually. It is automatically set when a winner is drawn.');
     }
 
     // If updating status to OPEN, check if another OPEN stream giveaway exists
