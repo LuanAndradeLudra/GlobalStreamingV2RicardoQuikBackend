@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsInt, Min } from 'class-validator';
+import { Exclude } from 'class-transformer';
 
 export class CreateGiveawayTicketRuleOverrideDto {
   @ApiProperty({
@@ -17,5 +18,18 @@ export class CreateGiveawayTicketRuleOverrideDto {
   @IsInt()
   @Min(1)
   ticketsPerUnit: number;
+
+  // These properties are excluded from validation but may be present in the payload
+  @Exclude()
+  id?: string;
+
+  @Exclude()
+  streamGiveawayId?: string;
+
+  @Exclude()
+  createdAt?: Date | string;
+
+  @Exclude()
+  updatedAt?: Date | string;
 }
 

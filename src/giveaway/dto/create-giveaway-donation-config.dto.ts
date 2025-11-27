@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEnum, IsString } from 'class-validator';
+import { Exclude } from 'class-transformer';
 import { ConnectedPlatform, DonationWindow } from '@prisma/client';
 
 export class CreateGiveawayDonationConfigDto {
@@ -25,5 +26,19 @@ export class CreateGiveawayDonationConfigDto {
   })
   @IsEnum(DonationWindow)
   donationWindow: DonationWindow;
+
+  // These properties are excluded from validation but may be present in the payload
+  // They will be stripped out during transformation before validation
+  @Exclude()
+  id?: string;
+
+  @Exclude()
+  streamGiveawayId?: string;
+
+  @Exclude()
+  createdAt?: Date | string;
+
+  @Exclude()
+  updatedAt?: Date | string;
 }
 

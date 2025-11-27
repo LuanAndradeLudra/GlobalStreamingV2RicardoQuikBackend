@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEnum, IsString, IsInt, Min } from 'class-validator';
+import { Exclude } from 'class-transformer';
 import { ConnectedPlatform } from '@prisma/client';
 
 export class CreateGiveawayDonationRuleOverrideDto {
@@ -35,5 +36,18 @@ export class CreateGiveawayDonationRuleOverrideDto {
   @IsInt()
   @Min(1)
   ticketsPerUnitSize: number;
+
+  // These properties are excluded from validation but may be present in the payload
+  @Exclude()
+  id?: string;
+
+  @Exclude()
+  streamGiveawayId?: string;
+
+  @Exclude()
+  createdAt?: Date | string;
+
+  @Exclude()
+  updatedAt?: Date | string;
 }
 
