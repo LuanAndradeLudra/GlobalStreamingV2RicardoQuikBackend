@@ -365,5 +365,87 @@ export class KickOAuthService {
       throw new InternalServerErrorException('Failed to fetch channels');
     }
   }
+
+  /**
+   * Send a chat message to a Kick channel
+   * Requires chat:write scope
+   * 
+   * According to https://docs.kick.com/apis/chat:
+   * - POST /public/v1/chat
+   * - Body: { broadcaster_user_id, content, type: "user" | "bot", reply_to_message_id? }
+   * - When sending as user, broadcaster_user_id is required
+   * - When sending as bot, broadcaster_user_id is ignored
+   */
+  async sendChatMessage(
+    accessToken: string,
+    broadcasterUserId: number,
+    message: string,
+    type: 'user' | 'bot' = 'user',
+    replyToMessageId?: string,
+  ): Promise<any> {
+    console.log('💬 [Kick OAuth] Sending chat message...');
+    console.log('📝 [Kick OAuth] Broadcaster User ID:', broadcasterUserId);
+    console.log('📝 [Kick OAuth] Message:', message);
+    console.log('📝 [Kick OAuth] Type:', type);
+
+    try {
+      const body: any = {
+        content: message,
+        type: type,
+      };
+
+      // broadcaster_user_id is required when type is "user"
+      // When type is "bot", broadcaster_user_id should NOT be included (it's ignored anyway)
+      if (type === 'user') {
+        body.broadcaster_user_id = broadcasterUserId;
+      }
+      // When type is "bot", don't include broadcaster_user_id at all
+
+      // Optional reply_to_message_id
+      if (replyToMessageId) {
+        body.reply_to_message_id = replyToMessageId;
+      }
+
+      console.log('📤 [Kick OAuth] Request body:', JSON.stringify(body, null, 2));
+
+      const url = `${this.kickApiUrl}/chat`;
+      console.log('📤 [Kick OAuth] Request URL:', url);
+      console.log('📤 [Kick OAuth] Request body:', JSON.stringify(body, null, 2));
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      console.log('📥 [Kick OAuth] Send message response status:', response.status);
+      const responseText = await response.text();
+      console.log('📥 [Kick OAuth] Send message response:', responseText);
+
+      if (!response.ok) {
+        // Log more details for debugging
+        console.error('❌ [Kick OAuth] Error details:', {
+          status: response.status,
+          statusText: response.statusText,
+          responseText,
+          requestBody: body,
+          type,
+        });
+        throw new BadRequestException(`Failed to send chat message: ${responseText}`);
+      }
+
+      return JSON.parse(responseText);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error sending chat message:', error);
+      throw new InternalServerErrorException('Failed to send chat message');
+    }
+  }
 }
 
