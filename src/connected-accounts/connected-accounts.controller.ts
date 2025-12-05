@@ -5,27 +5,39 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
+  Res,
+  Req,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Request, Response } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { ConnectedAccountsService } from './connected-accounts.service';
 import { CreateConnectedAccountDto } from './dto/create-connected-account.dto';
+import { KickOAuthService } from './services/kick-oauth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { User, UserRole, ConnectedAccount } from '@prisma/client';
+import { User, UserRole, ConnectedAccount, ConnectedPlatform } from '@prisma/client';
+import * as crypto from 'crypto';
 
 @ApiTags('connected-accounts')
 @Controller('connected-accounts')
-@UseGuards(JwtAuthGuard)
-@ApiBearerAuth('JWT-auth')
 export class ConnectedAccountsController {
-  constructor(private readonly connectedAccountsService: ConnectedAccountsService) {}
+  constructor(
+    private readonly connectedAccountsService: ConnectedAccountsService,
+    private readonly kickOAuthService: KickOAuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Get()
+  @UseGuards(JwtAuthGuard)
   @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'List connected accounts',
     description: 'Returns all connected accounts for the authenticated admin user',
@@ -66,7 +78,9 @@ export class ConnectedAccountsController {
   }
 
   @Post()
+  @UseGuards(JwtAuthGuard)
   @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Create or update connected account',
@@ -113,7 +127,9 @@ export class ConnectedAccountsController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Delete connected account',
@@ -137,6 +153,173 @@ export class ConnectedAccountsController {
   })
   async remove(@CurrentUser() user: User, @Param('id') id: string): Promise<void> {
     await this.connectedAccountsService.remove(user.id, id);
+  }
+
+  @Get('oauth/kick/authorize')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Initiate Kick OAuth flow',
+    description: 'Returns Kick authorization URL or redirects to Kick authorization page',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Authorization URL',
+    schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect to Kick authorization page (when accessed via browser)',
+  })
+  async initiateKickOAuth(
+    @CurrentUser() user: User,
+    @Res() res: Response,
+    @Req() req: Request,
+  ): Promise<void> {
+    try {
+      // Generate state with user ID to ensure security
+      const state = crypto.randomBytes(16).toString('hex');
+      const stateWithUserId = `${state}:${user.id}`;
+
+      const { url } = this.kickOAuthService.getAuthorizationUrl(stateWithUserId);
+
+      // Check if request is from AJAX/fetch (has Accept: application/json header)
+      const acceptHeader = req.headers.accept || '';
+      const isJsonRequest = acceptHeader.includes('application/json');
+
+      if (isJsonRequest) {
+        // Return JSON for AJAX requests
+        res.json({ url });
+      } else {
+        // Redirect for direct browser access
+        res.redirect(url);
+      }
+    } catch (error) {
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+      const acceptHeader = req.headers.accept || '';
+      const isJsonRequest = acceptHeader.includes('application/json');
+
+      if (isJsonRequest) {
+        res.status(500).json({
+          error: 'kick_oauth_not_configured',
+          message: 'Kick OAuth not configured',
+        });
+      } else {
+        res.redirect(`${frontendUrl}/settings?error=kick_oauth_not_configured`);
+      }
+    }
+  }
+
+  @Public()
+  @Get('oauth/kick/callback')
+  @ApiOperation({
+    summary: 'Kick OAuth callback',
+    description: 'Handles the callback from Kick OAuth flow',
+  })
+  @ApiQuery({ name: 'code', required: false, description: 'Authorization code from Kick' })
+  @ApiQuery({ name: 'state', required: false, description: 'State parameter for security' })
+  @ApiQuery({ name: 'error', required: false, description: 'Error from Kick OAuth' })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect to frontend with success or error',
+  })
+  async kickOAuthCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Query('error') error: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    console.log('🎯 [Kick OAuth Callback] Received callback');
+    console.log('📝 [Kick OAuth Callback] Query params:', { code: code?.substring(0, 20) + '...', state, error });
+
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+
+    if (error) {
+      console.error('❌ [Kick OAuth Callback] Error from Kick:', error);
+      res.redirect(`${frontendUrl}/settings?error=kick_oauth_error&message=${encodeURIComponent(error)}`);
+      return;
+    }
+
+    if (!code || !state) {
+      console.error('❌ [Kick OAuth Callback] Missing code or state');
+      res.redirect(`${frontendUrl}/settings?error=kick_oauth_missing_params`);
+      return;
+    }
+
+    try {
+      // Decode URL-encoded state
+      const decodedState = decodeURIComponent(state);
+      console.log('📝 [Kick OAuth Callback] Decoded state:', decodedState.substring(0, 50) + '...');
+      
+      // Extract user ID from state
+      const [stateValue, userId] = decodedState.split(':');
+      console.log('📝 [Kick OAuth Callback] Extracted userId:', userId);
+      
+      if (!userId) {
+        console.error('❌ [Kick OAuth Callback] Invalid state format - no userId found');
+        res.redirect(`${frontendUrl}/settings?error=kick_oauth_invalid_state`);
+        return;
+      }
+
+      console.log('🔄 [Kick OAuth Callback] Starting token exchange...');
+      // Exchange code for token (use original state for PKCE validation)
+      const { tokenResponse, channelInfo } = await this.kickOAuthService.exchangeCodeForToken(
+        code,
+        decodedState,
+      );
+      
+      console.log('✅ [Kick OAuth Callback] Token exchange successful');
+
+      // Calculate expiration date
+      const expiresAt = tokenResponse.expires_in
+        ? new Date(Date.now() + tokenResponse.expires_in * 1000)
+        : undefined;
+
+      console.log('💾 [Kick OAuth Callback] Preparing to save connected account...');
+      console.log('📝 [Kick OAuth Callback] Account data:', {
+        platform: 'KICK',
+        externalChannelId: channelInfo.id.toString(),
+        displayName: channelInfo.display_name || channelInfo.username,
+        hasAccessToken: !!tokenResponse.access_token,
+        hasRefreshToken: !!tokenResponse.refresh_token,
+        scopes: tokenResponse.scope,
+        expiresAt: expiresAt?.toISOString(),
+      });
+
+      // Create or update connected account
+      const createDto: CreateConnectedAccountDto = {
+        platform: 'KICK' as ConnectedPlatform,
+        externalChannelId: channelInfo.id.toString(),
+        displayName: channelInfo.display_name || channelInfo.username,
+        accessToken: tokenResponse.access_token,
+        refreshToken: tokenResponse.refresh_token,
+        scopes: tokenResponse.scope,
+        expiresAt: expiresAt?.toISOString(),
+      };
+
+      const savedAccount = await this.connectedAccountsService.createOrUpdate(userId, createDto);
+      console.log('✅ [Kick OAuth Callback] Account saved successfully:', {
+        id: savedAccount.id,
+        platform: savedAccount.platform,
+        displayName: savedAccount.displayName,
+      });
+
+      // Redirect to frontend with success
+      console.log('🔄 [Kick OAuth Callback] Redirecting to frontend...');
+      res.redirect(`${frontendUrl}/settings?success=kick_connected`);
+    } catch (error: unknown) {
+      console.error('Kick OAuth callback error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.redirect(
+        `${frontendUrl}/settings?error=kick_oauth_callback_failed&message=${encodeURIComponent(errorMessage)}`,
+      );
+    }
   }
 }
 

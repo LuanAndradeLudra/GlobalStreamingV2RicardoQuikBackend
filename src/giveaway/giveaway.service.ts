@@ -967,6 +967,12 @@ export class GiveawayService {
       throw new BadRequestException('Can only draw winners when giveaway status is OPEN or DONE');
     }
 
+    // Count existing winners to determine repick number
+    const existingWinners = await (this.prisma as any).streamGiveawayWinner.findMany({
+      where: { streamGiveawayId },
+    });
+    const repickNumber = existingWinners.length > 0 ? existingWinners.length : null;
+
     // If this is a repick (status is DONE), mark current winner as REPICK first
     if (streamGiveaway.status === 'DONE' as any) {
       await (this.prisma as any).streamGiveawayWinner.updateMany({
@@ -1043,7 +1049,12 @@ export class GiveawayService {
       throw new BadRequestException('RANDOM_ORG_API_KEY is not configured');
     }
 
-    const randomResult = await this.callRandomOrg(randomOrgApiKey, totalTickets);
+    const randomResult = await this.callRandomOrg(
+      randomOrgApiKey,
+      totalTickets,
+      streamGiveaway.name,
+      repickNumber,
+    );
     const drawnNumber = randomResult.random.data[0];
     const randomPayload = randomResult.random;
     const signature = randomResult.signature;
@@ -1143,10 +1154,23 @@ export class GiveawayService {
   /**
    * Call Random.org Signed API to generate a random integer.
    */
-  private async callRandomOrg(apiKey: string, max: number): Promise<{
+  private async callRandomOrg(
+    apiKey: string,
+    max: number,
+    giveawayName: string,
+    repickNumber: number | null,
+  ): Promise<{
     random: any;
     signature: string;
   }> {
+    // Build userData with giveaway name and repick info if applicable
+    let userData: string;
+    if (repickNumber !== null && repickNumber > 0) {
+      userData = `${giveawayName} - Repick ${repickNumber}`;
+    } else {
+      userData = giveawayName;
+    }
+
     const requestBody = {
       jsonrpc: '2.0',
       method: 'generateSignedIntegers',
@@ -1156,6 +1180,7 @@ export class GiveawayService {
         min: 0,
         max: max - 1,
         replacement: true,
+        userData,
       },
       id: 1,
     };

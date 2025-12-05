@@ -8,6 +8,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 
+  // Set global prefix for all routes
+  app.setGlobalPrefix('api');
+
   // CORS configuration
   const frontendUrl = configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
   const isDevelopment = configService.get<string>('NODE_ENV') !== 'production';
@@ -52,12 +55,12 @@ async function bootstrap() {
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+  SwaggerModule.setup('api/docs', app, document);
 
   const port = configService.get<number>('PORT') ?? 3000;
   await app.listen(port);
   console.log(`🚀 API is running on port ${port}`);
-  console.log(`📚 Swagger documentation available at ${isDevelopment ? `http://localhost:${port}/api` : frontendUrl}`);
+  console.log(`📚 Swagger documentation available at ${isDevelopment ? `http://localhost:${port}/api/docs` : `${frontendUrl}/api/docs`}`);
   console.log(`🌐 CORS enabled for: ${isDevelopment ? 'localhost origins' : frontendUrl}`);
 }
 

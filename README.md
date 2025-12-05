@@ -101,6 +101,11 @@ JWT_EXPIRES_IN=7d
 
 # Frontend URL (for OAuth redirects)
 FRONTEND_URL=http://localhost:3000
+
+# Kick OAuth (optional, for Kick platform integration)
+KICK_CLIENT_ID=your_kick_client_id_here
+KICK_CLIENT_SECRET=your_kick_client_secret_here
+KICK_REDIRECT_URI=http://localhost:3000/api/connected-accounts/oauth/kick/callback
 ```
 
 **Database Examples:**
@@ -128,6 +133,16 @@ FRONTEND_URL=http://localhost:3000
   - Domain mismatch (e.g., `localhost` vs `127.0.0.1`)
 - When the backend starts, it will log the callback URL being used - verify it matches Google Cloud Console
 - In Google Cloud Console, you can add multiple authorized redirect URIs (one for dev, one for prod)
+
+**Kick OAuth Setup:**
+1. Go to [Kick Developer Portal](https://kick.com/developers) (or the Kick app creation page)
+2. Create a new application
+3. Set the redirect URI to match your `KICK_REDIRECT_URI`:
+   - For local development: `http://localhost:3000/api/connected-accounts/oauth/kick/callback`
+   - For production: `https://yourdomain.com/api/connected-accounts/oauth/kick/callback`
+4. Copy the Client ID and Client Secret to your `.env` file
+5. **Required Scopes**: The integration requests `channel:read`, `chat:write`, and `events:subscribe` scopes
+6. ⚠️ **The redirect URI must match EXACTLY** (including http/https, port, path)
 
 ### 6. Generate Prisma Client
 
