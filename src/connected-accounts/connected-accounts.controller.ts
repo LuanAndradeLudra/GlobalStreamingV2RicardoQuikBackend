@@ -19,6 +19,7 @@ import { ConfigService } from '@nestjs/config';
 import { ConnectedAccountsService } from './connected-accounts.service';
 import { CreateConnectedAccountDto } from './dto/create-connected-account.dto';
 import { KickOAuthService } from './services/kick-oauth.service';
+import { TwitchOAuthService } from './services/twitch-oauth.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -32,6 +33,7 @@ export class ConnectedAccountsController {
   constructor(
     private readonly connectedAccountsService: ConnectedAccountsService,
     private readonly kickOAuthService: KickOAuthService,
+    private readonly twitchOAuthService: TwitchOAuthService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -451,6 +453,169 @@ export class ConnectedAccountsController {
       console.error('Error fetching webhook subscriptions:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       throw new BadRequestException(`Failed to fetch subscriptions: ${errorMessage}`);
+    }
+  }
+
+  @Get('oauth/twitch/authorize')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-twitch')
+  @ApiOperation({
+    summary: 'Initiate Twitch OAuth flow',
+    description: 'Returns Twitch authorization URL or redirects to Twitch authorization page',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Authorization URL',
+    schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect to Twitch authorization page (when accessed via browser)',
+  })
+  async initiateTwitchOAuth(
+    @CurrentUser() user: User,
+    @Res() res: Response,
+    @Req() req: Request,
+  ): Promise<void> {
+    try {
+      // Generate state with user ID to ensure security
+      const state = crypto.randomBytes(16).toString('hex');
+      const stateWithUserId = `${state}:${user.id}`;
+
+      // Store state for validation in callback
+      this.twitchOAuthService.storeState(stateWithUserId, user.id);
+
+      const url = this.twitchOAuthService.getAuthorizationUrl(stateWithUserId);
+
+      // Check if request is from AJAX/fetch (has Accept: application/json header)
+      const acceptHeader = req.headers.accept || '';
+      const isJsonRequest = acceptHeader.includes('application/json');
+
+      if (isJsonRequest) {
+        // Return JSON for AJAX requests
+        res.json({ url });
+      } else {
+        // Redirect for direct browser access
+        res.redirect(url);
+      }
+    } catch (error) {
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+      const acceptHeader = req.headers.accept || '';
+      const isJsonRequest = acceptHeader.includes('application/json');
+
+      if (isJsonRequest) {
+        res.status(500).json({
+          error: 'twitch_oauth_not_configured',
+          message: 'Twitch OAuth not configured',
+        });
+      } else {
+        res.redirect(`${frontendUrl}/settings?error=twitch_oauth_not_configured`);
+      }
+    }
+  }
+
+  @Public()
+  @Get('oauth/twitch/callback')
+  @ApiTags('connected-accounts-twitch')
+  @ApiOperation({
+    summary: 'Twitch OAuth callback',
+    description: 'Handles the callback from Twitch OAuth flow',
+  })
+  @ApiQuery({ name: 'code', required: false, description: 'Authorization code from Twitch' })
+  @ApiQuery({ name: 'state', required: false, description: 'State parameter for security' })
+  @ApiQuery({ name: 'error', required: false, description: 'Error from Twitch OAuth' })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect to frontend with success or error',
+  })
+  async twitchOAuthCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Query('error') error: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    console.log('🎯 [Twitch OAuth Callback] Received callback');
+    console.log('📝 [Twitch OAuth Callback] Query params:', { code: code?.substring(0, 20) + '...', state, error });
+
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+
+    if (error) {
+      console.error('❌ [Twitch OAuth Callback] Error from Twitch:', error);
+      res.redirect(`${frontendUrl}/settings?error=twitch_oauth_error&message=${encodeURIComponent(error)}`);
+      return;
+    }
+
+    if (!code || !state) {
+      console.error('❌ [Twitch OAuth Callback] Missing code or state');
+      res.redirect(`${frontendUrl}/settings?error=twitch_oauth_missing_params`);
+      return;
+    }
+
+    try {
+      // Decode URL-encoded state
+      const decodedState = decodeURIComponent(state);
+      console.log('📝 [Twitch OAuth Callback] Decoded state:', decodedState.substring(0, 50) + '...');
+
+      // Validate state and extract userId
+      const userId = this.twitchOAuthService.validateState(decodedState);
+      console.log('📝 [Twitch OAuth Callback] Extracted userId:', userId);
+
+      console.log('🔄 [Twitch OAuth Callback] Starting token exchange...');
+      // Exchange code for token
+      const { tokenResponse, userInfo } = await this.twitchOAuthService.exchangeCodeForToken(code);
+
+      console.log('✅ [Twitch OAuth Callback] Token exchange successful');
+
+      // Calculate expiration date
+      const expiresAt = tokenResponse.expires_in
+        ? new Date(Date.now() + tokenResponse.expires_in * 1000)
+        : undefined;
+
+      console.log('💾 [Twitch OAuth Callback] Preparing to save connected account...');
+      console.log('📝 [Twitch OAuth Callback] Account data:', {
+        platform: 'TWITCH',
+        externalChannelId: userInfo.id,
+        displayName: userInfo.display_name || userInfo.login,
+        hasAccessToken: !!tokenResponse.access_token,
+        hasRefreshToken: !!tokenResponse.refresh_token,
+        scopes: tokenResponse.scope,
+        expiresAt: expiresAt?.toISOString(),
+      });
+
+      // Create or update connected account
+      const createDto: CreateConnectedAccountDto = {
+        platform: 'TWITCH' as ConnectedPlatform,
+        externalChannelId: userInfo.id,
+        displayName: userInfo.display_name || userInfo.login,
+        accessToken: tokenResponse.access_token,
+        refreshToken: tokenResponse.refresh_token,
+        scopes: Array.isArray(tokenResponse.scope) ? tokenResponse.scope.join(' ') : tokenResponse.scope,
+        expiresAt: expiresAt?.toISOString(),
+      };
+
+      const savedAccount = await this.connectedAccountsService.createOrUpdate(userId, createDto);
+      console.log('✅ [Twitch OAuth Callback] Account saved successfully:', {
+        id: savedAccount.id,
+        platform: savedAccount.platform,
+        displayName: savedAccount.displayName,
+      });
+
+      // Redirect to frontend with success
+      console.log('🔄 [Twitch OAuth Callback] Redirecting to frontend...');
+      res.redirect(`${frontendUrl}/settings?success=twitch_connected`);
+    } catch (error: unknown) {
+      console.error('Twitch OAuth callback error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.redirect(
+        `${frontendUrl}/settings?error=twitch_oauth_callback_failed&message=${encodeURIComponent(errorMessage)}`,
+      );
     }
   }
 }
