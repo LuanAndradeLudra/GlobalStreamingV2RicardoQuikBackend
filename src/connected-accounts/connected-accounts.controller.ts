@@ -311,6 +311,31 @@ export class ConnectedAccountsController {
         displayName: savedAccount.displayName,
       });
 
+      // Automatically subscribe to webhook events after successful OAuth
+      try {
+        console.log('🔔 [Kick OAuth Callback] Subscribing to webhook events...');
+        const broadcasterUserId = parseInt(channelInfo.id.toString());
+        
+        // Subscribe to chat messages, subscriptions, and kicks gifted events
+        const events = [
+          { name: 'chat.message.sent', version: 1 },
+          { name: 'channel.subscription.new', version: 1 },
+          { name: 'kicks.gifted', version: 1 },
+        ];
+
+        await this.kickOAuthService.subscribeToEvents(
+          tokenResponse.access_token,
+          broadcasterUserId,
+          events,
+        );
+        
+        console.log('✅ [Kick OAuth Callback] Successfully subscribed to webhook events');
+      } catch (webhookError) {
+        // Log error but don't fail the OAuth flow
+        console.error('⚠️ [Kick OAuth Callback] Failed to subscribe to webhooks:', webhookError);
+        console.error('⚠️ [Kick OAuth Callback] Webhook subscription can be done manually later');
+      }
+
       // Redirect to frontend with success
       console.log('🔄 [Kick OAuth Callback] Redirecting to frontend...');
       res.redirect(`${frontendUrl}/settings?success=kick_connected`);
@@ -405,6 +430,108 @@ export class ConnectedAccountsController {
       console.error('Error sending chat message:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       throw new BadRequestException(`Failed to send chat message: ${errorMessage}`);
+    }
+  }
+
+  @Post('kick/subscribe-webhooks')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Subscribe to Kick webhook events',
+    description: 'Subscribes to Kick webhook events. Webhook URL is configured in Developer Dashboard.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully subscribed to webhook events',
+  })
+  async subscribeToKickWebhooks(
+    @CurrentUser() user: User,
+    @Body() body: { update?: boolean },
+  ): Promise<any> {
+    try {
+      // Find Kick connected account
+      const accounts = await this.connectedAccountsService.findAll(user.id);
+      const kickAccount = accounts.find((acc) => acc.platform === 'KICK');
+
+      if (!kickAccount) {
+        throw new BadRequestException('No Kick account connected');
+      }
+
+      const broadcasterUserId = parseInt(kickAccount.externalChannelId);
+      const events = [
+        { name: 'chat.message.sent', version: 1 },
+        { name: 'channel.subscription.new', version: 1 },
+        { name: 'kicks.gifted', version: 1 },
+      ];
+
+      let result;
+      if (body.update) {
+        // Update: delete old subscriptions and create new ones
+        result = await this.kickOAuthService.updateWebhookSubscriptions(
+          kickAccount.accessToken,
+          broadcasterUserId,
+          events,
+        );
+      } else {
+        // Just create new subscriptions
+        result = await this.kickOAuthService.subscribeToEvents(
+          kickAccount.accessToken,
+          broadcasterUserId,
+          events,
+        );
+      }
+
+      return {
+        success: true,
+        message: 'Successfully subscribed to webhook events',
+        data: result,
+        note: 'Webhook URL is configured in Developer Dashboard: https://rosita-subjugal-annabella.ngrok-free.dev/api/webhooks/kick',
+      };
+    } catch (error: unknown) {
+      console.error('Error subscribing to webhooks:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Failed to subscribe to webhooks: ${errorMessage}`);
+    }
+  }
+
+  @Get('kick/webhook-subscriptions')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Get active Kick webhook subscriptions',
+    description: 'Returns all active webhook subscriptions for the connected Kick account',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Active subscriptions retrieved successfully',
+  })
+  async getKickWebhookSubscriptions(@CurrentUser() user: User): Promise<any> {
+    try {
+      // Find Kick connected account
+      const accounts = await this.connectedAccountsService.findAll(user.id);
+      const kickAccount = accounts.find((acc) => acc.platform === 'KICK');
+
+      if (!kickAccount) {
+        throw new BadRequestException('No Kick account connected');
+      }
+
+      const subscriptions = await this.kickOAuthService.getActiveSubscriptions(kickAccount.accessToken);
+      const subscriptionsData = subscriptions.data || subscriptions;
+
+      console.log('📋 [Kick Webhooks] Active subscriptions:', JSON.stringify(subscriptionsData, null, 2));
+
+      return {
+        success: true,
+        count: Array.isArray(subscriptionsData) ? subscriptionsData.length : 0,
+        subscriptions: subscriptionsData,
+        webhookUrl: 'https://rosita-subjugal-annabella.ngrok-free.dev/api/webhooks/kick',
+      };
+    } catch (error: unknown) {
+      console.error('Error fetching webhook subscriptions:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Failed to fetch subscriptions: ${errorMessage}`);
     }
   }
 }

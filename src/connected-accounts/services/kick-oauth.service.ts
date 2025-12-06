@@ -447,5 +447,170 @@ export class KickOAuthService {
       throw new InternalServerErrorException('Failed to send chat message');
     }
   }
+
+  /**
+   * Subscribe to webhook events
+   * According to https://docs.kick.com/events/subscribe-to-events
+   * The webhook URL is configured in Developer Dashboard, not in the request body
+   */
+  async subscribeToEvents(
+    accessToken: string,
+    broadcasterUserId: number,
+    events: Array<{ name: string; version: number }>,
+  ): Promise<any> {
+    console.log('🔄 [Kick OAuth] Subscribing to events...');
+    console.log('📝 [Kick OAuth] Broadcaster User ID:', broadcasterUserId);
+    console.log('📝 [Kick OAuth] Events:', events);
+
+    try {
+      // Note: webhook_url is NOT sent in the body - it's configured in Developer Dashboard
+      const response = await fetch(`${this.kickApiUrl}/events/subscriptions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          broadcaster_user_id: broadcasterUserId,
+          events,
+          method: 'webhook',
+          // webhook_url is NOT included - it's configured in Developer Dashboard
+        }),
+      });
+
+      console.log('📥 [Kick OAuth] Subscription response status:', response.status);
+      const responseText = await response.text();
+      console.log('📥 [Kick OAuth] Subscription response:', responseText);
+
+      if (!response.ok) {
+        throw new BadRequestException(`Failed to subscribe to events: ${responseText}`);
+      }
+
+      return JSON.parse(responseText);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error subscribing to events:', error);
+      throw new InternalServerErrorException('Failed to subscribe to events');
+    }
+  }
+
+  /**
+   * Get active webhook subscriptions
+   */
+  async getActiveSubscriptions(accessToken: string): Promise<any> {
+    console.log('🔄 [Kick OAuth] Fetching active subscriptions...');
+
+    try {
+      const response = await fetch(`${this.kickApiUrl}/events/subscriptions`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+        },
+      });
+
+      console.log('📥 [Kick OAuth] Subscriptions response status:', response.status);
+      const responseText = await response.text();
+      console.log('📥 [Kick OAuth] Subscriptions response:', responseText);
+
+      if (!response.ok) {
+        throw new BadRequestException(`Failed to fetch subscriptions: ${responseText}`);
+      }
+
+      return JSON.parse(responseText);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error fetching subscriptions:', error);
+      throw new InternalServerErrorException('Failed to fetch subscriptions');
+    }
+  }
+
+  /**
+   * Delete a webhook subscription
+   * According to https://docs.kick.com/events/subscribe-to-events
+   * DELETE uses query parameters: /events/subscriptions?id=subscription_id
+   */
+  async deleteSubscription(accessToken: string, subscriptionId: string): Promise<any> {
+    console.log('🗑️ [Kick OAuth] Deleting subscription:', subscriptionId);
+
+    try {
+      const url = `${this.kickApiUrl}/events/subscriptions?id=${subscriptionId}`;
+      console.log('🗑️ [Kick OAuth] DELETE URL:', url);
+
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+        },
+      });
+
+      console.log('📥 [Kick OAuth] Delete subscription response status:', response.status);
+      const responseText = await response.text();
+      console.log('📥 [Kick OAuth] Delete subscription response:', responseText);
+
+      // 204 No Content is success, 404 means already deleted
+      if (!response.ok && response.status !== 404 && response.status !== 204) {
+        throw new BadRequestException(`Failed to delete subscription: ${responseText}`);
+      }
+
+      return { success: true };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error deleting subscription:', error);
+      throw new InternalServerErrorException('Failed to delete subscription');
+    }
+  }
+
+  /**
+   * Update webhook subscriptions by deleting old ones and creating new ones
+   */
+  async updateWebhookSubscriptions(
+    accessToken: string,
+    broadcasterUserId: number,
+    events: Array<{ name: string; version: number }>,
+  ): Promise<any> {
+    console.log('🔄 [Kick OAuth] Updating webhook subscriptions...');
+
+    try {
+      // Get existing subscriptions
+      const existingSubs = await this.getActiveSubscriptions(accessToken);
+      const subscriptions = existingSubs.data || [];
+
+      console.log('📋 [Kick OAuth] Existing subscriptions:', JSON.stringify(subscriptions, null, 2));
+
+      // Delete all existing subscriptions
+      if (subscriptions.length > 0) {
+        console.log(`🗑️ [Kick OAuth] Deleting ${subscriptions.length} existing subscriptions...`);
+        await Promise.all(
+          subscriptions.map((sub: any) => {
+            const subscriptionId = sub.id || sub.subscription_id;
+            if (!subscriptionId) {
+              console.warn(`⚠️ [Kick OAuth] Subscription has no ID:`, JSON.stringify(sub, null, 2));
+              return Promise.resolve();
+            }
+            console.log(`🗑️ [Kick OAuth] Deleting subscription: ${subscriptionId}`);
+            return this.deleteSubscription(accessToken, subscriptionId).catch((err) => {
+              console.warn(`⚠️ [Kick OAuth] Failed to delete subscription ${subscriptionId}:`, err);
+            });
+          }),
+        );
+      }
+
+      // Create new subscriptions
+      console.log('✅ [Kick OAuth] Creating new subscriptions...');
+      return await this.subscribeToEvents(accessToken, broadcasterUserId, events);
+    } catch (error) {
+      console.error('Error updating subscriptions:', error);
+      throw error;
+    }
+  }
 }
 

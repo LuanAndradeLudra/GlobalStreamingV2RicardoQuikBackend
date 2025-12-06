@@ -8,6 +8,7 @@ import { TicketConfigModule } from './ticket-config/ticket-config.module';
 import { GiveawayModule } from './giveaway/giveaway.module';
 import { RealtimeGatewayModule } from './realtime-gateway/realtime-gateway.module';
 import { SocialGiveawayModule } from './social-giveaway/social-giveaway.module';
+import { KickWebhooksModule } from './kick-webhooks/kick-webhooks.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { SocialGiveawayModule } from './social-giveaway/social-giveaway.module';
     GiveawayModule,
     RealtimeGatewayModule,
     SocialGiveawayModule,
+    KickWebhooksModule,
   ],
 })
 export class AppModule {}
