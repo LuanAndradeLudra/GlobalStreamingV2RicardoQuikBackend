@@ -9,6 +9,7 @@ import { GiveawayModule } from './giveaway/giveaway.module';
 import { RealtimeGatewayModule } from './realtime-gateway/realtime-gateway.module';
 import { SocialGiveawayModule } from './social-giveaway/social-giveaway.module';
 import { KickWebhooksModule } from './kick-webhooks/kick-webhooks.module';
+import { KickModule } from './kick/kick.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { KickWebhooksModule } from './kick-webhooks/kick-webhooks.module';
     RealtimeGatewayModule,
     SocialGiveawayModule,
     KickWebhooksModule,
+    KickModule,
   ],
 })
 export class AppModule {}

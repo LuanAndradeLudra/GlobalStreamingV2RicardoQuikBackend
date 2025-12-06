@@ -160,6 +160,7 @@ export class ConnectedAccountsController {
   @UseGuards(JwtAuthGuard)
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-kick')
   @ApiOperation({
     summary: 'Initiate Kick OAuth flow',
     description: 'Returns Kick authorization URL or redirects to Kick authorization page',
@@ -219,6 +220,7 @@ export class ConnectedAccountsController {
 
   @Public()
   @Get('oauth/kick/callback')
+  @ApiTags('connected-accounts-kick')
   @ApiOperation({
     summary: 'Kick OAuth callback',
     description: 'Handles the callback from Kick OAuth flow',
@@ -348,95 +350,11 @@ export class ConnectedAccountsController {
     }
   }
 
-  @Post('kick/send-chat-message')
-  @UseGuards(JwtAuthGuard)
-  @Roles(UserRole.ADMIN)
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({
-    summary: 'Send a chat message to Kick channel',
-    description: 'Sends a chat message to the connected Kick channel. Requires chat:write scope. See https://docs.kick.com/apis/chat',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Message sent successfully',
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Bad request - invalid message or missing channel',
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Unauthorized - invalid token or missing chat:write scope',
-  })
-  async sendKickChatMessage(
-    @CurrentUser() user: User,
-    @Body() body: { 
-      message: string; 
-      channelId?: number;
-      type?: 'user' | 'bot';
-      replyToMessageId?: string;
-    },
-  ): Promise<any> {
-    try {
-      // Find Kick connected account
-      const accounts = await this.connectedAccountsService.findAll(user.id);
-      const kickAccount = accounts.find((acc) => acc.platform === 'KICK');
-
-      if (!kickAccount) {
-        throw new BadRequestException('No Kick account connected');
-      }
-
-      // Check if chat:write scope is present
-      const scopes = kickAccount.scopes?.split(' ') || [];
-      if (!scopes.includes('chat:write')) {
-        throw new BadRequestException('Missing chat:write scope. Please reconnect your Kick account with chat:write permission.');
-      }
-
-      const broadcasterUserId = body.channelId || parseInt(kickAccount.externalChannelId);
-      const message = body.message?.trim();
-      const type = (body.type as 'user' | 'bot') || 'user';
-      const replyToMessageId = body.replyToMessageId;
-
-      if (!message || message.length === 0) {
-        throw new BadRequestException('Message cannot be empty');
-      }
-
-      if (message.length > 500) {
-        throw new BadRequestException('Message cannot exceed 500 characters');
-      }
-
-      if (type !== 'user' && type !== 'bot') {
-        throw new BadRequestException('Type must be either "user" or "bot"');
-      }
-
-      console.log('💬 [Kick Chat] Sending message to channel:', broadcasterUserId);
-      console.log('💬 [Kick Chat] Message:', message);
-      console.log('💬 [Kick Chat] Type:', type);
-
-      const result = await this.kickOAuthService.sendChatMessage(
-        kickAccount.accessToken,
-        broadcasterUserId,
-        message,
-        type,
-        replyToMessageId,
-      );
-
-      return {
-        success: true,
-        message: 'Chat message sent successfully',
-        data: result,
-      };
-    } catch (error: unknown) {
-      console.error('Error sending chat message:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new BadRequestException(`Failed to send chat message: ${errorMessage}`);
-    }
-  }
-
   @Post('kick/subscribe-webhooks')
   @UseGuards(JwtAuthGuard)
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-kick')
   @ApiOperation({
     summary: 'Subscribe to Kick webhook events',
     description: 'Subscribes to Kick webhook events. Webhook URL is configured in Developer Dashboard.',
@@ -499,6 +417,7 @@ export class ConnectedAccountsController {
   @UseGuards(JwtAuthGuard)
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-kick')
   @ApiOperation({
     summary: 'Get active Kick webhook subscriptions',
     description: 'Returns all active webhook subscriptions for the connected Kick account',

@@ -18,7 +18,7 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "http://localhost:3000",
+      "value": "http://localhost:4000/api",
       "type": "string"
     },
     {
@@ -471,6 +471,251 @@
               ]
             },
             "description": "Remove uma conta conectada"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Connected Accounts - Kick",
+      "item": [
+        {
+          "name": "Initiate Kick OAuth",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/connected-accounts/oauth/kick/authorize",
+              "host": ["{{base_url}}"],
+              "path": ["connected-accounts", "oauth", "kick", "authorize"]
+            },
+            "description": "Inicia o fluxo OAuth do Kick"
+          },
+          "response": []
+        },
+        {
+          "name": "Kick OAuth Callback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/connected-accounts/oauth/kick/callback?code=CODE&state=STATE",
+              "host": ["{{base_url}}"],
+              "path": ["connected-accounts", "oauth", "kick", "callback"],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "CODE",
+                  "description": "Authorization code from Kick"
+                },
+                {
+                  "key": "state",
+                  "value": "STATE",
+                  "description": "State parameter for security"
+                }
+              ]
+            },
+            "description": "Callback do OAuth do Kick"
+          },
+          "response": []
+        },
+        {
+          "name": "Subscribe to Kick Webhooks",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"update\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/connected-accounts/kick/subscribe-webhooks",
+              "host": ["{{base_url}}"],
+              "path": ["connected-accounts", "kick", "subscribe-webhooks"]
+            },
+            "description": "Inscreve-se em eventos de webhook do Kick"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Kick Webhook Subscriptions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/connected-accounts/kick/webhook-subscriptions",
+              "host": ["{{base_url}}"],
+              "path": ["connected-accounts", "kick", "webhook-subscriptions"]
+            },
+            "description": "Retorna todas as assinaturas de webhook ativas do Kick"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Connected Accounts - Twitch",
+      "item": [],
+      "description": "Rotas relacionadas ao Twitch serão adicionadas aqui no futuro"
+    },
+    {
+      "name": "Kick API",
+      "item": [
+        {
+          "name": "Send Chat Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Hello from API!\",\n  \"channelId\": 123456,\n  \"type\": \"user\",\n  \"replyToMessageId\": null\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/kick/send-chat-message",
+              "host": ["{{base_url}}"],
+              "path": ["kick", "send-chat-message"]
+            },
+            "description": "Envia uma mensagem de chat para o canal Kick conectado. Requer escopo chat:write."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Kick Coins Leaderboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/kick/kicks/leaderboard",
+              "host": ["{{base_url}}"],
+              "path": ["kick", "kicks", "leaderboard"]
+            },
+            "description": "Retorna o leaderboard de Kick coins. Requer bearer token da conta Kick conectada."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/kick/users?id=123&id=456",
+              "host": ["{{base_url}}"],
+              "path": ["kick", "users"],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "123",
+                  "description": "User ID"
+                },
+                {
+                  "key": "id",
+                  "value": "456",
+                  "description": "User ID (pode ter múltiplos)"
+                }
+              ]
+            },
+            "description": "Retorna informações de usuários pelos IDs especificados. Requer bearer token."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Gift Subs Leaderboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/kick/channels/:channelName/leaderboards",
+              "host": ["{{base_url}}"],
+              "path": ["kick", "channels", ":channelName", "leaderboards"],
+              "variable": [
+                {
+                  "key": "channelName",
+                  "value": "yoda",
+                  "description": "Nome do canal do usuário"
+                }
+              ]
+            },
+            "description": "Retorna o leaderboard de gift subs para um canal específico. Requer bearer token e nome do canal."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Channel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/kick/channels/:channelName",
+              "host": ["{{base_url}}"],
+              "path": ["kick", "channels", ":channelName"],
+              "variable": [
+                {
+                  "key": "channelName",
+                  "value": "LuanAndradeLudra",
+                  "description": "Nome do canal"
+                }
+              ]
+            },
+            "description": "Retorna informações de um canal específico. Requer bearer token."
           },
           "response": []
         }
