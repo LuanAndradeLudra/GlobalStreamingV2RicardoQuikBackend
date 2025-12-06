@@ -10,9 +10,6 @@ async function bootstrap() {
   });
   const configService = app.get(ConfigService);
 
-  // Set global prefix for all routes
-  app.setGlobalPrefix('api');
-
   // CORS configuration
   const frontendUrl = configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
   const isDevelopment = configService.get<string>('NODE_ENV') !== 'production';
@@ -55,6 +52,11 @@ async function bootstrap() {
       'JWT-auth',
     )
     .build();
+
+  // Set global prefix for all routes except public auth routes
+  app.setGlobalPrefix('api', {
+    exclude: ['auth/google', 'auth/google/callback'],
+  });
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);

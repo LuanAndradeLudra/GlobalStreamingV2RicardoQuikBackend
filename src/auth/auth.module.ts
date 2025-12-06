@@ -6,6 +6,7 @@ import { APP_GUARD } from '@nestjs/core';
 import type { StringValue } from 'ms';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { AuthPublicController } from './auth-public.controller';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -30,7 +31,7 @@ import { UserModule } from '../user/user.module';
       inject: [ConfigService],
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, AuthPublicController],
   providers: [
     AuthService,
     GoogleStrategy,
