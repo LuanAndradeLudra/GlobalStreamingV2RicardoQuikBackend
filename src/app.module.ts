@@ -10,6 +10,8 @@ import { RealtimeGatewayModule } from './realtime-gateway/realtime-gateway.modul
 import { SocialGiveawayModule } from './social-giveaway/social-giveaway.module';
 import { KickWebhooksModule } from './kick-webhooks/kick-webhooks.module';
 import { KickModule } from './kick/kick.module';
+import { TwitchWebhooksModule } from './twitch-webhooks/twitch-webhooks.module';
+import { YouTubeChatModule } from './youtube-chat/youtube-chat.module';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { KickModule } from './kick/kick.module';
     SocialGiveawayModule,
     KickWebhooksModule,
     KickModule,
+    TwitchWebhooksModule,
+    YouTubeChatModule,
   ],
 })
 export class AppModule {}

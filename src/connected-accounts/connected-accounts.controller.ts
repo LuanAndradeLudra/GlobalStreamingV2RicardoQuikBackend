@@ -20,6 +20,8 @@ import { ConnectedAccountsService } from './connected-accounts.service';
 import { CreateConnectedAccountDto } from './dto/create-connected-account.dto';
 import { KickOAuthService } from './services/kick-oauth.service';
 import { TwitchOAuthService } from './services/twitch-oauth.service';
+import { YouTubeOAuthService } from './services/youtube-oauth.service';
+import { YouTubeChatService } from '../youtube-chat/youtube-chat.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -34,6 +36,8 @@ export class ConnectedAccountsController {
     private readonly connectedAccountsService: ConnectedAccountsService,
     private readonly kickOAuthService: KickOAuthService,
     private readonly twitchOAuthService: TwitchOAuthService,
+    private readonly youtubeOAuthService: YouTubeOAuthService,
+    private readonly youtubeChatService: YouTubeChatService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -607,6 +611,49 @@ export class ConnectedAccountsController {
         displayName: savedAccount.displayName,
       });
 
+      // Automatically subscribe to EventSub webhook events after successful OAuth
+      try {
+        console.log('🔔 [Twitch OAuth Callback] Subscribing to EventSub webhook events...');
+        const broadcasterUserId = userInfo.id;
+        const botUserId = broadcasterUserId; // Use broadcaster as bot by default
+        
+        // Check if account has required scopes
+        const requiredScopes = ['user:read:chat', 'user:bot', 'channel:bot'];
+        // tokenResponse.scope is always an array from Twitch API
+        const accountScopes = tokenResponse.scope;
+        const missingScopes = requiredScopes.filter(scope => !accountScopes.includes(scope));
+        
+        if (missingScopes.length > 0) {
+          console.warn('⚠️ [Twitch OAuth Callback] Missing required scopes for webhook subscription:', missingScopes);
+          console.warn('⚠️ [Twitch OAuth Callback] Webhook subscription skipped. User can subscribe manually later.');
+        } else {
+          // Use TWITCH_WEBHOOK_URL if configured, otherwise fallback to BACKEND_URL or localhost
+          const webhookBaseUrl = 
+            this.configService.get<string>('TWITCH_WEBHOOK_URL') ||
+            this.configService.get<string>('BACKEND_URL') ||
+            'http://localhost:4000';
+          const webhookUrl = `${webhookBaseUrl.replace(/\/$/, '')}/api/webhooks/twitch`;
+          const webhookSecret = this.configService.get<string>('TWITCH_WEBHOOK_SECRET');
+
+          if (webhookSecret) {
+            await this.twitchOAuthService.subscribeToChatMessages(
+              broadcasterUserId,
+              botUserId,
+              webhookUrl,
+              webhookSecret,
+            );
+            console.log('✅ [Twitch OAuth Callback] Successfully subscribed to EventSub webhook events');
+          } else {
+            console.warn('⚠️ [Twitch OAuth Callback] TWITCH_WEBHOOK_SECRET not configured. Webhook subscription skipped.');
+            console.warn('⚠️ [Twitch OAuth Callback] User can subscribe manually later via /connected-accounts/twitch/subscribe-webhooks');
+          }
+        }
+      } catch (webhookError) {
+        // Log error but don't fail the OAuth flow
+        console.error('⚠️ [Twitch OAuth Callback] Failed to subscribe to webhooks:', webhookError);
+        console.error('⚠️ [Twitch OAuth Callback] Webhook subscription can be done manually later');
+      }
+
       // Redirect to frontend with success
       console.log('🔄 [Twitch OAuth Callback] Redirecting to frontend...');
       res.redirect(`${frontendUrl}/settings?success=twitch_connected`);
@@ -616,6 +663,398 @@ export class ConnectedAccountsController {
       res.redirect(
         `${frontendUrl}/settings?error=twitch_oauth_callback_failed&message=${encodeURIComponent(errorMessage)}`,
       );
+    }
+  }
+
+  @Post('twitch/subscribe-webhooks')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-twitch')
+  @ApiOperation({
+    summary: 'Subscribe to Twitch EventSub webhook events',
+    description: 'Creates EventSub subscription for channel.chat.message. Requires TWITCH_WEBHOOK_SECRET to be configured.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully subscribed to webhook events',
+  })
+  async subscribeToTwitchWebhooks(
+    @CurrentUser() user: User,
+    @Body() body: { update?: boolean; botUserId?: string },
+  ): Promise<any> {
+    try {
+      // Find Twitch connected account
+      const accounts = await this.connectedAccountsService.findAll(user.id);
+      const twitchAccount = accounts.find((acc) => acc.platform === 'TWITCH');
+
+      if (!twitchAccount) {
+        throw new BadRequestException('No Twitch account connected');
+      }
+
+      const broadcasterUserId = twitchAccount.externalChannelId;
+      const botUserId = body.botUserId || broadcasterUserId; // Use broadcaster as bot if not specified
+      
+      // Check if account has required scopes
+      const requiredScopes = ['user:read:chat', 'user:bot', 'channel:bot'];
+      const accountScopes = twitchAccount.scopes?.split(' ') || [];
+      const missingScopes = requiredScopes.filter(scope => !accountScopes.includes(scope));
+      
+      if (missingScopes.length > 0) {
+        throw new BadRequestException(
+          `Missing required scopes: ${missingScopes.join(', ')}. ` +
+          `Please reconnect your Twitch account with the required permissions. ` +
+          `Required scopes: ${requiredScopes.join(', ')}`
+        );
+      }
+      
+      // Use TWITCH_WEBHOOK_URL if configured, otherwise fallback to BACKEND_URL or localhost
+      const webhookBaseUrl = 
+        this.configService.get<string>('TWITCH_WEBHOOK_URL') ||
+        this.configService.get<string>('BACKEND_URL') ||
+        'http://localhost:3000';
+      // Remove trailing slash if present and add webhook path
+      const webhookUrl = `${webhookBaseUrl.replace(/\/$/, '')}/api/webhooks/twitch`;
+      const webhookSecret = this.configService.get<string>('TWITCH_WEBHOOK_SECRET');
+
+      if (!webhookSecret) {
+        throw new BadRequestException(
+          'TWITCH_WEBHOOK_SECRET not configured. Please set this environment variable with your webhook secret.',
+        );
+      }
+
+      let result;
+      if (body.update) {
+        // Update: delete old subscriptions and create new ones
+        result = await this.twitchOAuthService.updateEventSubSubscriptions(
+          broadcasterUserId,
+          botUserId,
+          webhookUrl,
+          webhookSecret,
+        );
+      } else {
+        // Just create new subscription
+        result = await this.twitchOAuthService.subscribeToChatMessages(
+          broadcasterUserId,
+          botUserId,
+          webhookUrl,
+          webhookSecret,
+        );
+      }
+
+      return {
+        success: true,
+        message: 'Successfully subscribed to EventSub webhook events',
+        data: result,
+        webhookUrl,
+        note: 'Make sure TWITCH_WEBHOOK_SECRET environment variable matches the secret used when creating the subscription.',
+      };
+    } catch (error: unknown) {
+      console.error('Error subscribing to Twitch webhooks:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Failed to subscribe to webhooks: ${errorMessage}`);
+    }
+  }
+
+  @Get('twitch/webhook-subscriptions')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-twitch')
+  @ApiOperation({
+    summary: 'Get active Twitch EventSub webhook subscriptions',
+    description: 'Returns all active EventSub subscriptions',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Active subscriptions retrieved successfully',
+  })
+  async getTwitchWebhookSubscriptions(@CurrentUser() user: User): Promise<any> {
+    try {
+      const appAccessToken = await this.twitchOAuthService.getAppAccessToken();
+      const subscriptions = await this.twitchOAuthService.getEventSubSubscriptions(appAccessToken);
+      const subscriptionsData = subscriptions.data || subscriptions;
+
+      console.log('📋 [Twitch EventSub] Active subscriptions:', JSON.stringify(subscriptionsData, null, 2));
+
+      // Use TWITCH_WEBHOOK_URL if configured, otherwise fallback to BACKEND_URL or localhost
+      const webhookBaseUrl = 
+        this.configService.get<string>('TWITCH_WEBHOOK_URL') ||
+        this.configService.get<string>('BACKEND_URL') ||
+        'http://localhost:4000';
+      // Remove trailing slash if present and add webhook path
+      const webhookUrl = `${webhookBaseUrl.replace(/\/$/, '')}/api/webhooks/twitch`;
+
+      return {
+        success: true,
+        count: Array.isArray(subscriptionsData) ? subscriptionsData.length : 0,
+        subscriptions: subscriptionsData,
+        webhookUrl,
+        total: subscriptions.total || 0,
+        total_cost: subscriptions.total_cost || 0,
+        max_total_cost: subscriptions.max_total_cost || 0,
+      };
+    } catch (error: unknown) {
+      console.error('Error fetching Twitch webhook subscriptions:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Failed to fetch subscriptions: ${errorMessage}`);
+    }
+  }
+
+  @Get('oauth/youtube/authorize')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-youtube')
+  @ApiOperation({
+    summary: 'Initiate YouTube OAuth flow',
+    description: 'Returns YouTube authorization URL or redirects to YouTube authorization page',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Authorization URL',
+    schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect to YouTube authorization page (when accessed via browser)',
+  })
+  async initiateYouTubeOAuth(
+    @CurrentUser() user: User,
+    @Res() res: Response,
+    @Req() req: Request,
+  ): Promise<void> {
+    try {
+      // Generate state with user ID to ensure security
+      const state = crypto.randomBytes(16).toString('hex');
+      const stateWithUserId = `${state}:${user.id}`;
+
+      // Store state for validation in callback
+      this.youtubeOAuthService.storeState(stateWithUserId, user.id);
+
+      const url = this.youtubeOAuthService.getAuthorizationUrl(stateWithUserId);
+
+      // Check if request is from AJAX/fetch (has Accept: application/json header)
+      const acceptHeader = req.headers.accept || '';
+      const isJsonRequest = acceptHeader.includes('application/json');
+
+      if (isJsonRequest) {
+        // Return JSON for AJAX requests
+        res.json({ url });
+      } else {
+        // Redirect for direct browser access
+        res.redirect(url);
+      }
+    } catch (error) {
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+      const acceptHeader = req.headers.accept || '';
+      const isJsonRequest = acceptHeader.includes('application/json');
+
+      if (isJsonRequest) {
+        res.status(500).json({
+          error: 'youtube_oauth_not_configured',
+          message: 'YouTube OAuth not configured',
+        });
+      } else {
+        res.redirect(`${frontendUrl}/settings?error=youtube_oauth_not_configured`);
+      }
+    }
+  }
+
+  @Public()
+  @Get('oauth/youtube/callback')
+  @ApiTags('connected-accounts-youtube')
+  @ApiOperation({
+    summary: 'YouTube OAuth callback',
+    description: 'Handles the callback from YouTube OAuth flow',
+  })
+  @ApiQuery({ name: 'code', required: false, description: 'Authorization code from YouTube' })
+  @ApiQuery({ name: 'state', required: false, description: 'State parameter for security' })
+  @ApiQuery({ name: 'error', required: false, description: 'Error from YouTube OAuth' })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect to frontend with success or error',
+  })
+  async youtubeOAuthCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Query('error') error: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    console.log('🎯 [YouTube OAuth Callback] Received callback');
+    console.log('📝 [YouTube OAuth Callback] Query params:', { code: code?.substring(0, 20) + '...', state, error });
+
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+
+    if (error) {
+      console.error('❌ [YouTube OAuth Callback] Error from YouTube:', error);
+      res.redirect(`${frontendUrl}/settings?error=youtube_oauth_error&message=${encodeURIComponent(error)}`);
+      return;
+    }
+
+    if (!code || !state) {
+      console.error('❌ [YouTube OAuth Callback] Missing code or state');
+      res.redirect(`${frontendUrl}/settings?error=youtube_oauth_missing_params`);
+      return;
+    }
+
+    try {
+      // Decode URL-encoded state
+      const decodedState = decodeURIComponent(state);
+      console.log('📝 [YouTube OAuth Callback] Decoded state:', decodedState.substring(0, 50) + '...');
+
+      // Validate state and extract userId
+      const userId = this.youtubeOAuthService.validateState(decodedState);
+      console.log('📝 [YouTube OAuth Callback] Extracted userId:', userId);
+
+      console.log('🔄 [YouTube OAuth Callback] Starting token exchange...');
+      // Exchange code for token
+      const { tokenResponse, channelInfo } = await this.youtubeOAuthService.exchangeCodeForToken(code);
+
+      console.log('✅ [YouTube OAuth Callback] Token exchange successful');
+
+      // Calculate expiration date
+      const expiresAt = tokenResponse.expires_in
+        ? new Date(Date.now() + tokenResponse.expires_in * 1000)
+        : undefined;
+
+      console.log('💾 [YouTube OAuth Callback] Preparing to save connected account...');
+      console.log('📝 [YouTube OAuth Callback] Account data:', {
+        platform: 'YOUTUBE',
+        externalChannelId: channelInfo.id,
+        displayName: channelInfo.title,
+        hasAccessToken: !!tokenResponse.access_token,
+        hasRefreshToken: !!tokenResponse.refresh_token,
+        scopes: tokenResponse.scope,
+        expiresAt: expiresAt?.toISOString(),
+      });
+
+      // Create or update connected account
+      const createDto: CreateConnectedAccountDto = {
+        platform: 'YOUTUBE' as ConnectedPlatform,
+        externalChannelId: channelInfo.id,
+        displayName: channelInfo.title,
+        accessToken: tokenResponse.access_token,
+        refreshToken: tokenResponse.refresh_token,
+        scopes: tokenResponse.scope,
+        expiresAt: expiresAt?.toISOString(),
+      };
+
+      const savedAccount = await this.connectedAccountsService.createOrUpdate(userId, createDto);
+      console.log('✅ [YouTube OAuth Callback] Account saved successfully:', {
+        id: savedAccount.id,
+        platform: savedAccount.platform,
+        displayName: savedAccount.displayName,
+      });
+
+      // Redirect to frontend with success
+      console.log('🔄 [YouTube OAuth Callback] Redirecting to frontend...');
+      res.redirect(`${frontendUrl}/settings?success=youtube_connected`);
+    } catch (error: unknown) {
+      console.error('YouTube OAuth callback error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.redirect(
+        `${frontendUrl}/settings?error=youtube_oauth_callback_failed&message=${encodeURIComponent(errorMessage)}`,
+      );
+    }
+  }
+
+  @Post('youtube/start-chat-polling')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-youtube')
+  @ApiOperation({
+    summary: 'Start YouTube Live Chat polling',
+    description: 'Starts polling chat messages from active YouTube live streams',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Chat polling started successfully',
+  })
+  async startYouTubeChatPolling(@CurrentUser() user: User): Promise<any> {
+    try {
+      // Find YouTube connected account
+      const accounts = await this.connectedAccountsService.findAll(user.id);
+      const youtubeAccount = accounts.find((acc) => acc.platform === 'YOUTUBE');
+
+      if (!youtubeAccount) {
+        throw new BadRequestException('No YouTube account connected');
+      }
+
+      if (!youtubeAccount.refreshToken) {
+        throw new BadRequestException('YouTube account missing refresh token. Please reconnect your account.');
+      }
+
+      // Check if already polling
+      if (this.youtubeChatService.isPollingActive(youtubeAccount.externalChannelId)) {
+        return {
+          success: true,
+          message: 'Chat polling already active for this channel',
+          channelId: youtubeAccount.externalChannelId,
+        };
+      }
+
+      // Start polling
+      await this.youtubeChatService.startChatPolling(
+        youtubeAccount.externalChannelId,
+        youtubeAccount.accessToken,
+        youtubeAccount.refreshToken,
+      );
+
+      return {
+        success: true,
+        message: 'Chat polling started successfully',
+        channelId: youtubeAccount.externalChannelId,
+        note: 'Polling will automatically detect when a live stream starts and begin collecting chat messages.',
+      };
+    } catch (error: unknown) {
+      console.error('Error starting YouTube chat polling:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Failed to start chat polling: ${errorMessage}`);
+    }
+  }
+
+  @Post('youtube/stop-chat-polling')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-youtube')
+  @ApiOperation({
+    summary: 'Stop YouTube Live Chat polling',
+    description: 'Stops polling chat messages from YouTube live streams',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Chat polling stopped successfully',
+  })
+  async stopYouTubeChatPolling(@CurrentUser() user: User): Promise<any> {
+    try {
+      // Find YouTube connected account
+      const accounts = await this.connectedAccountsService.findAll(user.id);
+      const youtubeAccount = accounts.find((acc) => acc.platform === 'YOUTUBE');
+
+      if (!youtubeAccount) {
+        throw new BadRequestException('No YouTube account connected');
+      }
+
+      // Stop polling
+      this.youtubeChatService.stopChatPolling(youtubeAccount.externalChannelId);
+
+      return {
+        success: true,
+        message: 'Chat polling stopped successfully',
+        channelId: youtubeAccount.externalChannelId,
+      };
+    } catch (error: unknown) {
+      console.error('Error stopping YouTube chat polling:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Failed to stop chat polling: ${errorMessage}`);
     }
   }
 }

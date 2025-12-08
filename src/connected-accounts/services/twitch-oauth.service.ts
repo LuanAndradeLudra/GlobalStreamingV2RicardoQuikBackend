@@ -70,7 +70,7 @@ export class TwitchOAuthService {
       client_id: this.clientId,
       redirect_uri: this.redirectUri,
       response_type: 'code',
-      scope: 'channel:read:subscriptions channel:read:redemptions channel:manage:redemptions user:read:email user:write:chat chat:read chat:edit bits:read',
+      scope: 'channel:read:subscriptions channel:read:redemptions channel:manage:redemptions user:read:email user:write:chat chat:read chat:edit bits:read user:read:chat user:bot channel:bot',
       state,
     });
 
@@ -335,6 +335,276 @@ export class TwitchOAuthService {
       }
       console.error('Error validating token:', error);
       throw new InternalServerErrorException('Failed to validate token');
+    }
+  }
+
+  /**
+   * Get App Access Token
+   * App Access Tokens are required to create EventSub subscriptions
+   */
+  async getAppAccessToken(): Promise<string> {
+    if (!this.clientId || !this.clientSecret) {
+      throw new BadRequestException('Twitch OAuth not configured');
+    }
+
+    const params = new URLSearchParams({
+      client_id: this.clientId,
+      client_secret: this.clientSecret,
+      grant_type: 'client_credentials',
+    });
+
+    try {
+      const response = await fetch(`${this.twitchOAuthUrl}/oauth2/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [Twitch API] App token error:', errorText);
+        throw new BadRequestException(`Failed to get app access token: ${errorText}`);
+      }
+
+      const data = await response.json();
+      return data.access_token;
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error getting app access token:', error);
+      throw new InternalServerErrorException('Failed to get app access token');
+    }
+  }
+
+  /**
+   * Create EventSub subscription
+   * Requires App Access Token (not User Access Token)
+   */
+  async createEventSubSubscription(
+    appAccessToken: string,
+    subscriptionType: string,
+    version: string,
+    condition: Record<string, string>,
+    webhookUrl: string,
+    webhookSecret: string,
+  ): Promise<any> {
+    console.log('🔄 [Twitch EventSub] Creating subscription...');
+    console.log('📝 [Twitch EventSub] Type:', subscriptionType);
+    console.log('📝 [Twitch EventSub] Version:', version);
+    console.log('📝 [Twitch EventSub] Condition:', condition);
+
+    try {
+      const response = await fetch(`${this.twitchApiUrl}/eventsub/subscriptions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${appAccessToken}`,
+          'Client-Id': this.clientId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: subscriptionType,
+          version,
+          condition,
+          transport: {
+            method: 'webhook',
+            callback: webhookUrl,
+            secret: webhookSecret,
+          },
+        }),
+      });
+
+      console.log('📥 [Twitch EventSub] Response status:', response.status);
+      const responseText = await response.text();
+      console.log('📥 [Twitch EventSub] Response:', responseText);
+
+      if (!response.ok) {
+        let errorMessage = `Failed to create subscription: ${responseText}`;
+        
+        // Provide more helpful error messages
+        if (response.status === 403) {
+          try {
+            const errorData = JSON.parse(responseText);
+            if (errorData.message?.includes('subscription missing proper authorization')) {
+              errorMessage = `Subscription authorization failed (403). This usually means:
+1. The bot user (user_id) doesn't have permission to read chat messages in the channel
+2. The bot is banned or timed out in the channel
+3. Missing required scopes: user:read:chat, user:bot (for bot), and channel:bot (for broadcaster)
+4. The broadcaster hasn't authorized your Client ID with channel:bot scope
+
+Original error: ${responseText}`;
+            }
+          } catch (e) {
+            // If parsing fails, use original message
+          }
+        }
+        
+        throw new BadRequestException(errorMessage);
+      }
+
+      return JSON.parse(responseText);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error creating EventSub subscription:', error);
+      throw new InternalServerErrorException('Failed to create EventSub subscription');
+    }
+  }
+
+  /**
+   * Get active EventSub subscriptions
+   */
+  async getEventSubSubscriptions(appAccessToken: string, status?: string): Promise<any> {
+    console.log('🔄 [Twitch EventSub] Fetching subscriptions...');
+
+    try {
+      const params = new URLSearchParams();
+      if (status) {
+        params.append('status', status);
+      }
+
+      const url = `${this.twitchApiUrl}/eventsub/subscriptions${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${appAccessToken}`,
+          'Client-Id': this.clientId,
+        },
+      });
+
+      console.log('📥 [Twitch EventSub] Subscriptions response status:', response.status);
+      const responseText = await response.text();
+      console.log('📥 [Twitch EventSub] Subscriptions response:', responseText);
+
+      if (!response.ok) {
+        throw new BadRequestException(`Failed to fetch subscriptions: ${responseText}`);
+      }
+
+      return JSON.parse(responseText);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error fetching EventSub subscriptions:', error);
+      throw new InternalServerErrorException('Failed to fetch EventSub subscriptions');
+    }
+  }
+
+  /**
+   * Delete EventSub subscription
+   */
+  async deleteEventSubSubscription(appAccessToken: string, subscriptionId: string): Promise<void> {
+    console.log('🗑️ [Twitch EventSub] Deleting subscription:', subscriptionId);
+
+    try {
+      const response = await fetch(`${this.twitchApiUrl}/eventsub/subscriptions?id=${subscriptionId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${appAccessToken}`,
+          'Client-Id': this.clientId,
+        },
+      });
+
+      console.log('📥 [Twitch EventSub] Delete response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new BadRequestException(`Failed to delete subscription: ${errorText}`);
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error deleting EventSub subscription:', error);
+      throw new InternalServerErrorException('Failed to delete EventSub subscription');
+    }
+  }
+
+  /**
+   * Subscribe to channel.chat.message EventSub
+   * This is a convenience method specifically for chat messages
+   */
+  async subscribeToChatMessages(
+    broadcasterUserId: string,
+    botUserId: string,
+    webhookUrl: string,
+    webhookSecret: string,
+  ): Promise<any> {
+    console.log('🔄 [Twitch EventSub] Subscribing to chat messages...');
+    console.log('📝 [Twitch EventSub] Broadcaster ID:', broadcasterUserId);
+    console.log('📝 [Twitch EventSub] Bot User ID:', botUserId);
+
+    const appAccessToken = await this.getAppAccessToken();
+
+    return this.createEventSubSubscription(
+      appAccessToken,
+      'channel.chat.message',
+      '1',
+      {
+        broadcaster_user_id: broadcasterUserId,
+        user_id: botUserId,
+      },
+      webhookUrl,
+      webhookSecret,
+    );
+  }
+
+  /**
+   * Update EventSub subscriptions
+   * Deletes existing subscriptions and creates new ones
+   */
+  async updateEventSubSubscriptions(
+    broadcasterUserId: string,
+    botUserId: string,
+    webhookUrl: string,
+    webhookSecret: string,
+  ): Promise<any> {
+    console.log('🔄 [Twitch EventSub] Updating subscriptions...');
+
+    try {
+      const appAccessToken = await this.getAppAccessToken();
+
+      // Get existing subscriptions
+      const existingSubs = await this.getEventSubSubscriptions(appAccessToken);
+      const subscriptions = existingSubs.data || [];
+
+      console.log('📋 [Twitch EventSub] Existing subscriptions:', JSON.stringify(subscriptions, null, 2));
+
+      // Delete all existing subscriptions for this broadcaster/bot
+      if (subscriptions.length > 0) {
+        console.log(`🗑️ [Twitch EventSub] Deleting ${subscriptions.length} existing subscriptions...`);
+        await Promise.all(
+          subscriptions
+            .filter((sub: any) => {
+              // Only delete subscriptions for this broadcaster and bot
+              return (
+                sub.condition?.broadcaster_user_id === broadcasterUserId &&
+                sub.condition?.user_id === botUserId
+              );
+            })
+            .map((sub: any) => {
+              const subscriptionId = sub.id;
+              if (!subscriptionId) {
+                console.warn(`⚠️ [Twitch EventSub] Subscription has no ID:`, JSON.stringify(sub, null, 2));
+                return Promise.resolve();
+              }
+              console.log(`🗑️ [Twitch EventSub] Deleting subscription: ${subscriptionId}`);
+              return this.deleteEventSubSubscription(appAccessToken, subscriptionId).catch((err) => {
+                console.warn(`⚠️ [Twitch EventSub] Failed to delete subscription ${subscriptionId}:`, err);
+              });
+            }),
+        );
+      }
+
+      // Create new subscription
+      console.log('✅ [Twitch EventSub] Creating new subscription...');
+      return await this.subscribeToChatMessages(broadcasterUserId, botUserId, webhookUrl, webhookSecret);
+    } catch (error) {
+      console.error('Error updating EventSub subscriptions:', error);
+      throw error;
     }
   }
 }
