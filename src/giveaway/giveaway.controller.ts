@@ -20,6 +20,7 @@ import { DrawResponseDto } from './dto/draw-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User, UserRole, StreamGiveaway, StreamGiveawayParticipant } from '@prisma/client';
 
@@ -121,6 +122,38 @@ export class GiveawayController {
     @Body() dto: CreateGiveawayDto,
   ): Promise<StreamGiveaway> {
     return this.giveawayService.create(user.id, dto);
+  }
+
+  @Get('public')
+  @Public()
+  @ApiOperation({
+    summary: 'List all giveaways (public)',
+    description: 'Returns all giveaways. Public endpoint, no authentication required.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Giveaways retrieved successfully',
+  })
+  async findAllPublic(): Promise<StreamGiveaway[]> {
+    return this.giveawayService.findAllPublic();
+  }
+
+  @Get('public/:id')
+  @Public()
+  @ApiOperation({
+    summary: 'Get stream giveaway details (public)',
+    description: 'Returns details of a specific stream giveaway including all participants. Public endpoint, no authentication required.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Stream giveaway retrieved successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Stream giveaway not found',
+  })
+  async findOnePublic(@Param('id') id: string): Promise<StreamGiveaway> {
+    return this.giveawayService.findOnePublic(id);
   }
 
   @Get()

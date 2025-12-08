@@ -395,6 +395,70 @@ export class GiveawayService {
   }
 
   /**
+   * Get all stream giveaways (public endpoint - no user filter).
+   */
+  async findAllPublic(): Promise<StreamGiveaway[]> {
+    return this.prisma.streamGiveaway.findMany({
+      where: {},
+      orderBy: { createdAt: 'desc' },
+      include: {
+        ticketRuleOverrides: true,
+        donationRuleOverrides: true,
+        donationConfigs: true,
+        participants: {
+          select: {
+            id: true,
+            username: true,
+            platform: true,
+            avatarUrl: true,
+            method: true,
+            tickets: true,
+            createdAt: true,
+            metadata: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Get a specific stream giveaway by ID (public endpoint - no user filter).
+   * Includes all related data: ticket rule overrides, donation rule overrides, donation configs, and participants.
+   */
+  async findOnePublic(id: string): Promise<StreamGiveaway> {
+    const streamGiveaway = await (this.prisma as any).streamGiveaway.findFirst({
+      where: {
+        id,
+      },
+      include: {
+        ticketRuleOverrides: true,
+        donationRuleOverrides: true,
+        donationConfigs: true,
+        participants: {
+          orderBy: [
+            { createdAt: 'desc' },
+            { tickets: 'desc' },
+          ],
+        },
+        winners: {
+          include: {
+            winnerParticipant: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+    });
+
+    if (!streamGiveaway) {
+      throw new NotFoundException(`Stream giveaway with ID ${id} not found`);
+    }
+
+    return streamGiveaway;
+  }
+
+  /**
    * Get a specific stream giveaway by ID, ensuring it belongs to the authenticated admin user.
    * Includes all related data: ticket rule overrides, donation rule overrides, donation configs, and participants.
    */
