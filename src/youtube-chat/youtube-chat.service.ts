@@ -285,6 +285,7 @@ export class YouTubeChatService {
    */
   private async processChatMessage(channelId: string, message: LiveChatMessage): Promise<void> {
     try {
+      console.log('message', message);
       const displayMessage = message.snippet.displayMessage || message.snippet.textMessageDetails?.messageText || '';
       const authorName = message.authorDetails.displayName;
       const authorChannelId = message.authorDetails.channelId;
@@ -455,3 +456,5 @@ export class YouTubeChatService {
     }
   }
 }
+
+

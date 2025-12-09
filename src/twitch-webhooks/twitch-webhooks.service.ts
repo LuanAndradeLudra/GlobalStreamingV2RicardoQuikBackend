@@ -92,7 +92,7 @@ export class TwitchWebhooksService {
     
     // Log message content
     if (event.message?.text) {
-      this.logger.log(`💬 [Twitch Webhook] Message: "${event.message.text}"`);
+      this.logger.log(`💬 [Twitch Webhook] Message: "${JSON.stringify(event.message)}"`);
     }
     
     if (event.chatter_user_name) {
