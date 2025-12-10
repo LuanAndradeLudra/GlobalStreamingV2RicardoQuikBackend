@@ -57,6 +57,11 @@ enum WinnerStatus {
   REPICK
 }
 
+enum KickGiftSubsCategory {
+  WEEKLY
+  MONTHLY
+}
+
 model User {
   id                      String                      @id @default(uuid())
   email                   String                      @unique
@@ -71,6 +76,7 @@ model User {
   ticketGlobalRules       TicketGlobalRule[]
   ticketGlobalDonationRules TicketGlobalDonationRule[]
   streamGiveaways         StreamGiveaway[]
+  kickGiftSubsGiveaways   KickGiftSubsGiveaway[]
 
   @@unique([provider, providerId])
 }
@@ -233,5 +239,64 @@ model StreamGiveawayWinner {
   winnerParticipant     StreamGiveawayParticipant @relation("WinnerParticipant", fields: [winnerParticipantId], references: [id], onDelete: Cascade)
   @@index([streamGiveawayId])
   @@index([streamGiveawayId, status])
+  @@index([winnerParticipantId])
+}
+
+// Kick Gift Subs Giveaways - sorteios baseados em gift subs da Kick
+model KickGiftSubsGiveaway {
+  id          String                        @id @default(uuid())
+  userId      String
+  name        String
+  category    KickGiftSubsCategory          // WEEKLY ou MONTHLY
+  createdAt   DateTime                      @default(now())
+  updatedAt   DateTime                      @updatedAt
+
+  user        User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  participants KickGiftSubsGiveawayParticipant[]
+  winners     KickGiftSubsGiveawayWinner[]
+
+  @@index([userId])
+}
+
+model KickGiftSubsGiveawayParticipant {
+  id              String                      @id @default(uuid())
+  kickGiftSubsGiveawayId String
+  externalUserId  String                      // user_id da API da Kick
+  username        String
+  avatarUrl       String?                     // URL da foto/avatar do participante
+  quantity        Int                         // Quantidade de gift subs
+  tickets         Int                         // Quantidade de tickets calculados
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+  
+  kickGiftSubsGiveaway KickGiftSubsGiveaway   @relation(fields: [kickGiftSubsGiveawayId], references: [id], onDelete: Cascade)
+  winnerIn             KickGiftSubsGiveawayWinner[] @relation("KickGiftSubsWinnerParticipant")
+  
+  @@index([kickGiftSubsGiveawayId])
+  @@index([kickGiftSubsGiveawayId, externalUserId])
+}
+
+model KickGiftSubsGiveawayWinner {
+  id                    String                      @id @default(uuid())
+  kickGiftSubsGiveawayId String
+  winnerParticipantId   String                      // ID do participante vencedor
+  status                WinnerStatus                // WINNER ou REPICK
+  participantRanges     Json                        // Array de ranges: [{id, display, start, end}]
+  totalTickets          Int                         // Total de tickets no sorteio
+  listHashAlgo          String                      // SHA256 ou MD5
+  listHash              String                      // Hash da lista de participantes
+  randomOrgRandom       Json                        // Payload completo do Random.org (result.random)
+  randomOrgSignature    String                      // Assinatura do Random.org
+  randomOrgVerificationUrl String                   // URL para verificar a assinatura
+  drawnNumber           Int                         // Número sorteado
+  verified              Boolean                     // Se a assinatura foi verificada
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+  
+  kickGiftSubsGiveaway  KickGiftSubsGiveaway       @relation(fields: [kickGiftSubsGiveawayId], references: [id], onDelete: Cascade)
+  winnerParticipant     KickGiftSubsGiveawayParticipant @relation("KickGiftSubsWinnerParticipant", fields: [winnerParticipantId], references: [id], onDelete: Cascade)
+  
+  @@index([kickGiftSubsGiveawayId])
+  @@index([kickGiftSubsGiveawayId, status])
   @@index([winnerParticipantId])
 }

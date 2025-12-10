@@ -6,6 +6,7 @@ import { UserModule } from './user/user.module';
 import { ConnectedAccountsModule } from './connected-accounts/connected-accounts.module';
 import { TicketConfigModule } from './ticket-config/ticket-config.module';
 import { GiveawayModule } from './giveaway/giveaway.module';
+import { KickGiftSubsGiveawayModule } from './kick-gift-subs-giveaway/kick-gift-subs-giveaway.module';
 import { RealtimeGatewayModule } from './realtime-gateway/realtime-gateway.module';
 import { SocialGiveawayModule } from './social-giveaway/social-giveaway.module';
 import { KickWebhooksModule } from './kick-webhooks/kick-webhooks.module';
@@ -22,6 +23,7 @@ import { YouTubeChatModule } from './youtube-chat/youtube-chat.module';
     ConnectedAccountsModule,
     TicketConfigModule,
     GiveawayModule,
+    KickGiftSubsGiveawayModule,
     RealtimeGatewayModule,
     SocialGiveawayModule,
     KickWebhooksModule,
