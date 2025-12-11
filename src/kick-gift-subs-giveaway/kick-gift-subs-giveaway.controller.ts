@@ -14,6 +14,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { KickGiftSubsGiveawayService } from './kick-gift-subs-giveaway.service';
 import { CreateKickGiftSubsGiveawayDto } from './dto/create-kick-gift-subs-giveaway.dto';
 import { UpdateKickGiftSubsGiveawayDto } from './dto/update-kick-gift-subs-giveaway.dto';
+import { SyncParticipantsDto } from './dto/sync-participants.dto';
 import { DrawResponseDto } from '../giveaway/dto/draw-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -109,27 +110,31 @@ export class KickGiftSubsGiveawayController {
     await this.kickGiftSubsGiveawayService.remove(user.id, id);
   }
 
-  @Post(':id/fetch-participants')
+  @Post(':id/sync-participants')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Fetch participants from Kick API',
-    description: 'Fetches participants from Kick API leaderboards and creates them in the database.',
+    summary: 'Sync participants from leaderboard data',
+    description: 'Syncs participants from Kick leaderboard data provided by frontend. Frontend should fetch leaderboard data first.',
   })
   @ApiResponse({
     status: 200,
-    description: 'Participants fetched and created successfully',
+    description: 'Participants synced and created successfully',
   })
   @ApiResponse({
     status: 400,
-    description: 'Bad request - Kick account not connected or gifts not enabled',
+    description: 'Bad request - invalid data or gifts not enabled',
   })
   @ApiResponse({
     status: 404,
     description: 'Kick Gift Subs Giveaway not found',
   })
-  async fetchParticipants(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.kickGiftSubsGiveawayService.fetchParticipants(user.id, id);
+  async syncParticipants(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Body() dto: SyncParticipantsDto,
+  ) {
+    return this.kickGiftSubsGiveawayService.syncParticipants(user.id, id, dto as any);
   }
 
   @Post(':id/draw')

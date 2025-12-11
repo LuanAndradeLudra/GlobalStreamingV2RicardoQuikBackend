@@ -63,26 +63,26 @@ enum KickGiftSubsCategory {
 }
 
 model User {
-  id                      String                      @id @default(uuid())
-  email                   String                      @unique
-  displayName             String
-  avatarUrl               String?
-  provider                AuthProvider
-  providerId              String
-  role                    UserRole                    @default(USER)
-  createdAt               DateTime                    @default(now())
-  updatedAt               DateTime                    @updatedAt
-  accounts                ConnectedAccount[]
-  ticketGlobalRules       TicketGlobalRule[]
+  id                        String                     @id @default(uuid())
+  email                     String                     @unique
+  displayName               String
+  avatarUrl                 String?
+  provider                  AuthProvider
+  providerId                String
+  role                      UserRole                   @default(USER)
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  accounts                  ConnectedAccount[]
+  ticketGlobalRules         TicketGlobalRule[]
   ticketGlobalDonationRules TicketGlobalDonationRule[]
-  streamGiveaways         StreamGiveaway[]
-  kickGiftSubsGiveaways   KickGiftSubsGiveaway[]
+  streamGiveaways           StreamGiveaway[]
+  kickGiftSubsGiveaways     KickGiftSubsGiveaway[]
 
   @@unique([provider, providerId])
 }
 
 model ConnectedAccount {
-  id                String             @id @default(uuid())
+  id                String            @id @default(uuid())
   userId            String
   platform          ConnectedPlatform
   externalChannelId String
@@ -91,8 +91,8 @@ model ConnectedAccount {
   refreshToken      String?
   scopes            String?
   expiresAt         DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -105,14 +105,15 @@ model ConnectedAccount {
 // NON_SUB must be platform-specific (e.g., NON_SUB for Twitch, NON_SUB for Kick)
 // Gift subs are handled in TicketGlobalDonationRule, not here
 model TicketGlobalRule {
-  id             String             @id @default(uuid())
+  id             String            @id @default(uuid())
   userId         String
-  platform       ConnectedPlatform  // Platform is required, especially for NON_SUB
-  role           String             // "NON_SUB", "TWITCH_TIER_1", "TWITCH_TIER_2", "TWITCH_TIER_3", "KICK_SUB", "YOUTUBE_SUB"
+  platform       ConnectedPlatform // Platform is required, especially for NON_SUB
+  role           String // "NON_SUB", "TWITCH_TIER_1", "TWITCH_TIER_2", "TWITCH_TIER_3", "KICK_SUB", "YOUTUBE_SUB"
   ticketsPerUnit Int
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([userId, platform, role])
 }
 
@@ -123,14 +124,14 @@ model TicketGlobalRule {
 //   - Bits: unitType="BITS", unitSize=100, ticketsPerUnitSize=1 → 100 bits = 1 ticket
 //   - Gift subs: unitType="GIFT_SUB", unitSize=1, ticketsPerUnitSize=4 → 1 gift = 4 tickets
 model TicketGlobalDonationRule {
-  id                 String             @id @default(uuid())
+  id                 String            @id @default(uuid())
   userId             String
-  platform           ConnectedPlatform  // TWITCH, KICK, YOUTUBE…
-  unitType           String             // "BITS", "GIFT_SUB", "KICK_COINS", etc.
-  unitSize           Int                // size of the "block" of units (e.g., 100 bits, 1 gift)
-  ticketsPerUnitSize Int                // tickets per block (e.g., 1 ticket per 100 bits, 4 tickets per gift)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  platform           ConnectedPlatform // TWITCH, KICK, YOUTUBE…
+  unitType           String // "BITS", "GIFT_SUB", "KICK_COINS", etc.
+  unitSize           Int // size of the "block" of units (e.g., 100 bits, 1 gift)
+  ticketsPerUnitSize Int // tickets per block (e.g., 1 ticket per 100 bits, 4 tickets per gift)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -138,105 +139,110 @@ model TicketGlobalDonationRule {
 }
 
 model StreamGiveaway {
-  id        String          @id @default(uuid())
-  userId    String
-  name      String
+  id          String               @id @default(uuid())
+  userId      String
+  name        String
   description String?
-  status    StreamGiveawayStatus
-  platforms Json            // Array<ConnectedPlatform> (TWITCH/KICK/YOUTUBE)
-  keyword   String          // OBRIGATÓRIA (STREAMS)
+  status      StreamGiveawayStatus
+  platforms   Json // Array<ConnectedPlatform> (TWITCH/KICK/YOUTUBE)
+  keyword     String // OBRIGATÓRIA (STREAMS)
 
   // filtros de elegibilidade (wizard step 2)
-  allowedRoles Json         // Array<string> das roles permitidas (ex.: ["NON_SUB","TWITCH_TIER_1",...])
+  allowedRoles Json // Array<string> das roles permitidas (ex.: ["NON_SUB","TWITCH_TIER_1",...])
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user                 User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ticketRuleOverrides  StreamGiveawayTicketRuleOverride[]
+  user                  User                                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketRuleOverrides   StreamGiveawayTicketRuleOverride[]
   donationRuleOverrides StreamGiveawayDonationRuleOverride[]
-  donationConfigs      StreamGiveawayDonationConfig[]
-  participants         StreamGiveawayParticipant[]
-  winners              StreamGiveawayWinner[]
+  donationConfigs       StreamGiveawayDonationConfig[]
+  participants          StreamGiveawayParticipant[]
+  winners               StreamGiveawayWinner[]
 
   @@index([userId, status])
 }
 
 model StreamGiveawayTicketRuleOverride {
-  id             String   @id @default(uuid())
-  streamGiveawayId     String
-  role           String   // mesma semântica do TicketGlobalRule.role
-  ticketsPerUnit Int
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  streamGiveaway       StreamGiveaway @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+  id               String         @id @default(uuid())
+  streamGiveawayId String
+  role             String // mesma semântica do TicketGlobalRule.role
+  ticketsPerUnit   Int
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  streamGiveaway   StreamGiveaway @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+
   @@unique([streamGiveawayId, role])
 }
 
 model StreamGiveawayDonationRuleOverride {
   id                 String            @id @default(uuid())
-  streamGiveawayId         String
+  streamGiveawayId   String
   platform           ConnectedPlatform
-  unitType           String            // "BITS" | "GIFT_SUB" | "KICK_COINS" | "SUPERCHAT"
+  unitType           String // "BITS" | "GIFT_SUB" | "KICK_COINS" | "SUPERCHAT"
   unitSize           Int
   ticketsPerUnitSize Int
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
-  streamGiveaway           StreamGiveaway          @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+  streamGiveaway     StreamGiveaway    @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+
   @@unique([streamGiveawayId, platform, unitType])
 }
 
 // Configuração de doações por stream giveaway (tabela pivô)
 // Define quais tipos de doação estão habilitados e suas janelas de tempo
 model StreamGiveawayDonationConfig {
-  id             String            @id @default(uuid())
-  streamGiveawayId     String
-  platform       ConnectedPlatform // TWITCH, KICK, YOUTUBE
-  unitType       String            // "BITS" | "GIFT_SUB" | "KICK_COINS" | "SUPERCHAT"
-  donationWindow DonationWindow    // DAILY | WEEKLY | MONTHLY
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  streamGiveaway       StreamGiveaway          @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+  id               String            @id @default(uuid())
+  streamGiveawayId String
+  platform         ConnectedPlatform // TWITCH, KICK, YOUTUBE
+  unitType         String // "BITS" | "GIFT_SUB" | "KICK_COINS" | "SUPERCHAT"
+  donationWindow   DonationWindow // DAILY | WEEKLY | MONTHLY
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  streamGiveaway   StreamGiveaway    @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+
   @@unique([streamGiveawayId, platform, unitType])
 }
 
 model StreamGiveawayParticipant {
-  id             String             @id @default(uuid())
-  streamGiveawayId     String
-  platform       ConnectedPlatform
-  externalUserId String
-  username       String
-  avatarUrl      String?            // URL da foto/avatar do participante
-  method         EntryMethod       // Método de entrada: BITS, TIER_1, NON_SUB, etc.
-  tickets        Int                // Quantidade de tickets para esta entrada específica
-  metadata       Json?              // Dados adicionais opcionais (ex.: quantidade de bits, tier específico, etc.)
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  streamGiveaway       StreamGiveaway          @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
-  winnerIn             StreamGiveawayWinner[]  @relation("WinnerParticipant")
+  id               String                 @id @default(uuid())
+  streamGiveawayId String
+  platform         ConnectedPlatform
+  externalUserId   String
+  username         String
+  avatarUrl        String? // URL da foto/avatar do participante
+  method           EntryMethod // Método de entrada: BITS, TIER_1, NON_SUB, etc.
+  tickets          Int // Quantidade de tickets para esta entrada específica
+  metadata         Json? // Dados adicionais opcionais (ex.: quantidade de bits, tier específico, etc.)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  streamGiveaway   StreamGiveaway         @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+  winnerIn         StreamGiveawayWinner[] @relation("WinnerParticipant")
+
   @@index([streamGiveawayId])
   @@index([streamGiveawayId, platform, externalUserId])
   @@index([streamGiveawayId, externalUserId, method]) // Permite múltiplas entradas do mesmo usuário com métodos diferentes
 }
 
 model StreamGiveawayWinner {
-  id                    String             @id @default(uuid())
-  streamGiveawayId      String
-  winnerParticipantId   String             // ID do participante vencedor
-  status                WinnerStatus        // WINNER ou REPICK
-  participantRanges     Json               // Array de ranges: [{id, display, start, end}]
-  totalTickets          Int                // Total de tickets no sorteio
-  listHashAlgo          String             // SHA256 ou MD5
-  listHash              String             // Hash da lista de participantes
-  randomOrgRandom       Json               // Payload completo do Random.org (result.random)
-  randomOrgSignature    String             // Assinatura do Random.org
-  randomOrgVerificationUrl String          // URL para verificar a assinatura
-  drawnNumber           Int                // Número sorteado
-  verified              Boolean            // Se a assinatura foi verificada
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
-  streamGiveaway        StreamGiveaway     @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
-  winnerParticipant     StreamGiveawayParticipant @relation("WinnerParticipant", fields: [winnerParticipantId], references: [id], onDelete: Cascade)
+  id                       String                    @id @default(uuid())
+  streamGiveawayId         String
+  winnerParticipantId      String // ID do participante vencedor
+  status                   WinnerStatus // WINNER ou REPICK
+  participantRanges        Json // Array de ranges: [{id, display, start, end}]
+  totalTickets             Int // Total de tickets no sorteio
+  listHashAlgo             String // SHA256 ou MD5
+  listHash                 String // Hash da lista de participantes
+  randomOrgRandom          Json // Payload completo do Random.org (result.random)
+  randomOrgSignature       String // Assinatura do Random.org
+  randomOrgVerificationUrl String // URL para verificar a assinatura
+  drawnNumber              Int // Número sorteado
+  verified                 Boolean // Se a assinatura foi verificada
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  streamGiveaway           StreamGiveaway            @relation(fields: [streamGiveawayId], references: [id], onDelete: Cascade)
+  winnerParticipant        StreamGiveawayParticipant @relation("WinnerParticipant", fields: [winnerParticipantId], references: [id], onDelete: Cascade)
+
   @@index([streamGiveawayId])
   @@index([streamGiveawayId, status])
   @@index([winnerParticipantId])
@@ -244,58 +250,58 @@ model StreamGiveawayWinner {
 
 // Kick Gift Subs Giveaways - sorteios baseados em gift subs da Kick
 model KickGiftSubsGiveaway {
-  id          String                        @id @default(uuid())
-  userId      String
-  name        String
-  category    KickGiftSubsCategory          // WEEKLY ou MONTHLY
-  createdAt   DateTime                      @default(now())
-  updatedAt   DateTime                      @updatedAt
+  id        String               @id @default(uuid())
+  userId    String
+  name      String
+  category  KickGiftSubsCategory // WEEKLY ou MONTHLY
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
 
-  user        User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
   participants KickGiftSubsGiveawayParticipant[]
-  winners     KickGiftSubsGiveawayWinner[]
+  winners      KickGiftSubsGiveawayWinner[]
 
   @@index([userId])
 }
 
 model KickGiftSubsGiveawayParticipant {
-  id              String                      @id @default(uuid())
+  id                     String   @id @default(uuid())
   kickGiftSubsGiveawayId String
-  externalUserId  String                      // user_id da API da Kick
-  username        String
-  avatarUrl       String?                     // URL da foto/avatar do participante
-  quantity        Int                         // Quantidade de gift subs
-  tickets         Int                         // Quantidade de tickets calculados
-  createdAt       DateTime                    @default(now())
-  updatedAt       DateTime                    @updatedAt
-  
-  kickGiftSubsGiveaway KickGiftSubsGiveaway   @relation(fields: [kickGiftSubsGiveawayId], references: [id], onDelete: Cascade)
+  externalUserId         String // user_id da API da Kick
+  username               String
+  avatarUrl              String? // URL da foto/avatar do participante
+  quantity               Int // Quantidade de gift subs
+  tickets                Int // Quantidade de tickets calculados
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  kickGiftSubsGiveaway KickGiftSubsGiveaway         @relation(fields: [kickGiftSubsGiveawayId], references: [id], onDelete: Cascade)
   winnerIn             KickGiftSubsGiveawayWinner[] @relation("KickGiftSubsWinnerParticipant")
-  
+
   @@index([kickGiftSubsGiveawayId])
   @@index([kickGiftSubsGiveawayId, externalUserId])
 }
 
 model KickGiftSubsGiveawayWinner {
-  id                    String                      @id @default(uuid())
-  kickGiftSubsGiveawayId String
-  winnerParticipantId   String                      // ID do participante vencedor
-  status                WinnerStatus                // WINNER ou REPICK
-  participantRanges     Json                        // Array de ranges: [{id, display, start, end}]
-  totalTickets          Int                         // Total de tickets no sorteio
-  listHashAlgo          String                      // SHA256 ou MD5
-  listHash              String                      // Hash da lista de participantes
-  randomOrgRandom       Json                        // Payload completo do Random.org (result.random)
-  randomOrgSignature    String                      // Assinatura do Random.org
-  randomOrgVerificationUrl String                   // URL para verificar a assinatura
-  drawnNumber           Int                         // Número sorteado
-  verified              Boolean                     // Se a assinatura foi verificada
-  createdAt             DateTime                    @default(now())
-  updatedAt             DateTime                    @updatedAt
-  
-  kickGiftSubsGiveaway  KickGiftSubsGiveaway       @relation(fields: [kickGiftSubsGiveawayId], references: [id], onDelete: Cascade)
-  winnerParticipant     KickGiftSubsGiveawayParticipant @relation("KickGiftSubsWinnerParticipant", fields: [winnerParticipantId], references: [id], onDelete: Cascade)
-  
+  id                       String       @id @default(uuid())
+  kickGiftSubsGiveawayId   String
+  winnerParticipantId      String // ID do participante vencedor
+  status                   WinnerStatus // WINNER ou REPICK
+  participantRanges        Json // Array de ranges: [{id, display, start, end}]
+  totalTickets             Int // Total de tickets no sorteio
+  listHashAlgo             String // SHA256 ou MD5
+  listHash                 String // Hash da lista de participantes
+  randomOrgRandom          Json // Payload completo do Random.org (result.random)
+  randomOrgSignature       String // Assinatura do Random.org
+  randomOrgVerificationUrl String // URL para verificar a assinatura
+  drawnNumber              Int // Número sorteado
+  verified                 Boolean // Se a assinatura foi verificada
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+
+  kickGiftSubsGiveaway KickGiftSubsGiveaway            @relation(fields: [kickGiftSubsGiveawayId], references: [id], onDelete: Cascade)
+  winnerParticipant    KickGiftSubsGiveawayParticipant @relation("KickGiftSubsWinnerParticipant", fields: [winnerParticipantId], references: [id], onDelete: Cascade)
+
   @@index([kickGiftSubsGiveawayId])
   @@index([kickGiftSubsGiveawayId, status])
   @@index([winnerParticipantId])

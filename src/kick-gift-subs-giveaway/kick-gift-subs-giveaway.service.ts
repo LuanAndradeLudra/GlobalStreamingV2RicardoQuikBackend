@@ -100,7 +100,7 @@ export class KickGiftSubsGiveawayService {
 
   /**
    * Generate name for Kick Gift Subs giveaway
-   * Format: "Sorteio de Kick Coins - Semanal/Mensal - DD MM YYYY"
+   * Format: "Sorteio de Gift Subs - Semanal/Mensal - DD MM YYYY"
    */
   private generateGiveawayName(category: KickGiftSubsCategory): string {
     const now = new Date();
@@ -108,11 +108,12 @@ export class KickGiftSubsGiveawayService {
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
     const year = now.getFullYear();
     const categoryLabel = category === KickGiftSubsCategory.WEEKLY ? 'Semanal' : 'Mensal';
-    return `Sorteio de Kick Coins - ${categoryLabel} - ${day} ${month} ${year}`;
+    return `Sorteio de Gift Subs - ${categoryLabel} - ${day} ${month} ${year}`;
   }
 
   /**
-   * Create a new Kick Gift Subs giveaway and fetch participants automatically
+   * Create a new Kick Gift Subs giveaway
+   * Note: Participants should be synced separately via syncParticipants endpoint (called from frontend)
    */
   async create(userId: string, dto: CreateKickGiftSubsGiveawayDto) {
     // Generate name automatically
@@ -127,16 +128,7 @@ export class KickGiftSubsGiveawayService {
       },
     });
 
-    // Fetch participants automatically
-    try {
-      await this.fetchParticipantsInternal(userId, giveaway.id, dto.category);
-    } catch (error) {
-      // If fetching participants fails, delete the giveaway and throw error
-      await this.prisma.kickGiftSubsGiveaway.delete({ where: { id: giveaway.id } });
-      throw error;
-    }
-
-    // Return giveaway with participants
+    // Return giveaway (participants will be synced by frontend)
     return this.findOne(userId, giveaway.id);
   }
 
@@ -164,64 +156,53 @@ export class KickGiftSubsGiveawayService {
   }
 
   /**
-   * Internal method to fetch participants (used by create and fetchParticipants)
+   * Sync participants from leaderboard data (called from frontend)
    */
-  private async fetchParticipantsInternal(
+  async syncParticipantsFromLeaderboard(
     userId: string,
     giveawayId: string,
     category: KickGiftSubsCategory,
+    leaderboardData: KickLeaderboardResponse,
   ) {
-
-    // Get user's Kick connected account
-    const kickAccount = await this.prisma.connectedAccount.findFirst({
-      where: {
-        userId,
-        platform: ConnectedPlatform.KICK,
-      },
-    });
-
-    if (!kickAccount) {
-      throw new BadRequestException('Kick account not connected. Please connect your Kick account first.');
-    }
-
-    // Use displayName as username for the API call
-    const username = kickAccount.displayName;
-
-    // Fetch leaderboard data from Kick API
-    const leaderboardUrl = `https://kick.com/api/v2/channels/${username}/leaderboards`;
-    const response = await fetch(leaderboardUrl);
-
-    if (!response.ok) {
-      throw new BadRequestException(`Failed to fetch Kick leaderboard: ${response.statusText}`);
-    }
-
-    const data: KickLeaderboardResponse = await response.json();
+    // Ensure giveaway exists and belongs to user
+    const giveaway = await this.findOne(userId, giveawayId);
 
     // Validate gifts are enabled
-    if (!data.gifts_enabled) {
+    if (!leaderboardData.gifts_enabled) {
       throw new BadRequestException('Gifts are not enabled for this channel');
     }
 
     // Validate category-specific gifts are enabled
     if (category === KickGiftSubsCategory.WEEKLY) {
-      if (!data.gifts_week_enabled) {
+      if (!leaderboardData.gifts_week_enabled) {
         throw new BadRequestException('Weekly gifts are not enabled for this channel');
       }
     } else if (category === KickGiftSubsCategory.MONTHLY) {
-      if (!data.gifts_month_enabled) {
+      if (!leaderboardData.gifts_month_enabled) {
         throw new BadRequestException('Monthly gifts are not enabled for this channel');
       }
     }
 
     // Get the appropriate gifts array based on category
     const giftsArray = category === KickGiftSubsCategory.WEEKLY 
-      ? data.gifts_week 
-      : data.gifts_month;
+      ? leaderboardData.gifts_week 
+      : leaderboardData.gifts_month;
 
     if (!giftsArray || giftsArray.length === 0) {
       throw new BadRequestException(`No ${category.toLowerCase()} gifts found`);
     }
 
+    return this.processGiftsArray(userId, giveawayId, giftsArray);
+  }
+
+  /**
+   * Process gifts array and create participants
+   */
+  private async processGiftsArray(
+    userId: string,
+    giveawayId: string,
+    giftsArray: Array<{ user_id: number; username: string; quantity: number }>,
+  ) {
     // Get ticket donation rule for KICK GIFT_SUB
     const donationRule = await this.prisma.ticketGlobalDonationRule.findFirst({
       where: {
@@ -267,12 +248,42 @@ export class KickGiftSubsGiveawayService {
   }
 
   /**
+   * Internal method to fetch participants (used by create and fetchParticipants)
+   * This method is kept for backward compatibility but should use syncParticipantsFromLeaderboard instead
+   */
+  private async fetchParticipantsInternal(
+    userId: string,
+    giveawayId: string,
+    category: KickGiftSubsCategory,
+  ) {
+    // This method is deprecated - use syncParticipantsFromLeaderboard instead
+    // Keeping for backward compatibility but it will likely fail due to Cloudflare
+    throw new BadRequestException(
+      'This method is deprecated. Please use the frontend to fetch leaderboard data and sync participants.',
+    );
+  }
+
+  /**
    * Fetch participants from Kick API and create them in the database
+   * DEPRECATED: Use syncParticipants instead - frontend should fetch leaderboard data
    */
   async fetchParticipants(userId: string, giveawayId: string) {
     // Ensure giveaway exists and belongs to user
     const giveaway = await this.findOne(userId, giveawayId);
     return this.fetchParticipantsInternal(userId, giveawayId, giveaway.category);
+  }
+
+  /**
+   * Sync participants from leaderboard data provided by frontend
+   */
+  async syncParticipants(
+    userId: string,
+    giveawayId: string,
+    leaderboardData: KickLeaderboardResponse,
+  ) {
+    // Ensure giveaway exists and belongs to user
+    const giveaway = await this.findOne(userId, giveawayId);
+    return this.syncParticipantsFromLeaderboard(userId, giveawayId, giveaway.category, leaderboardData);
   }
 
   /**
