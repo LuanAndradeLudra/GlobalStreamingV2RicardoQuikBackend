@@ -71,7 +71,6 @@ enum TwitchBitsCategory {
   DAILY
   WEEKLY
   MONTHLY
-  CUSTOM
 }
 
 model User {

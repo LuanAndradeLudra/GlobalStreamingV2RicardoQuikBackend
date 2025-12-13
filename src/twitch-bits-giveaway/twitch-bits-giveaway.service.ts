@@ -95,36 +95,23 @@ export class TwitchBitsGiveawayService {
 
   /**
    * Generate name for Twitch Bits giveaway
-   * Format: "Sorteio de Bits - Semanal/Mensal/Personalizado - DD MM YYYY"
+   * Format: "Sorteio de Bits - Diário/Semanal/Mensal - DD MM YYYY"
    */
   private generateGiveawayName(
     category: TwitchBitsCategory,
     startDate?: Date,
-    endDate?: Date,
   ): string {
     const now = new Date();
     const day = now.getDate().toString().padStart(2, '0');
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
     const year = now.getFullYear();
 
-    if (category === TwitchBitsCategory.CUSTOM && startDate && endDate) {
-      const startDay = startDate.getDate().toString().padStart(2, '0');
-      const startMonth = (startDate.getMonth() + 1).toString().padStart(2, '0');
-      const startYear = startDate.getFullYear();
-      const endDay = endDate.getDate().toString().padStart(2, '0');
-      const endMonth = (endDate.getMonth() + 1).toString().padStart(2, '0');
-      const endYear = endDate.getFullYear();
-      return `Sorteio de Bits - Personalizado - ${startDay}/${startMonth}/${startYear} a ${endDay}/${endMonth}/${endYear}`;
-    }
-
     const categoryLabel =
       category === TwitchBitsCategory.DAILY
         ? 'Diário'
         : category === TwitchBitsCategory.WEEKLY
           ? 'Semanal'
-          : category === TwitchBitsCategory.MONTHLY
-            ? 'Mensal'
-            : 'Personalizado';
+          : 'Mensal';
     return `Sorteio de Bits - ${categoryLabel} - ${day} ${month} ${year}`;
   }
 
@@ -140,24 +127,10 @@ export class TwitchBitsGiveawayService {
       }
     }
 
-    if (dto.category === TwitchBitsCategory.CUSTOM) {
-      if (!dto.startDate || !dto.endDate) {
-        throw new BadRequestException('startDate and endDate are required for CUSTOM category');
-      }
-
-      const startDate = new Date(dto.startDate);
-      const endDate = new Date(dto.endDate);
-
-      if (startDate >= endDate) {
-        throw new BadRequestException('startDate must be before endDate');
-      }
-    }
-
     // Generate name automatically
     const name = this.generateGiveawayName(
       dto.category,
       dto.startDate ? new Date(dto.startDate) : undefined,
-      dto.endDate ? new Date(dto.endDate) : undefined,
     );
 
     // Create giveaway
@@ -167,7 +140,7 @@ export class TwitchBitsGiveawayService {
         name,
         category: dto.category,
         startDate: dto.startDate ? new Date(dto.startDate) : null,
-        endDate: dto.endDate ? new Date(dto.endDate) : null,
+        endDate: null,
       },
     });
 
