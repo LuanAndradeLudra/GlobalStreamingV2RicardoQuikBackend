@@ -1,12 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
-import { ConnectedPlatform, KickCoinsCategory } from '@prisma/client';
+import { ConnectedPlatform, Prisma } from '@prisma/client';
 import { CreateKickCoinsGiveawayDto } from './dto/create-kick-coins-giveaway.dto';
 import { UpdateKickCoinsGiveawayDto } from './dto/update-kick-coins-giveaway.dto';
 import { DrawResponseDto } from '../giveaway/dto/draw-response.dto';
 import { KickService } from '../kick/kick.service';
 import * as crypto from 'crypto';
+
+// Import enum type from Prisma
+type KickCoinsCategory = 'WEEKLY' | 'MONTHLY';
 
 interface KickCoinsLeaderboardResponse {
   data: {
@@ -44,7 +47,7 @@ export class KickCoinsGiveawayService {
    * Get all Kick Coins giveaways for a user (without participants and winners for performance)
    */
   async findAll(userId: string) {
-    const giveaways = await this.prisma.kickCoinsGiveaway.findMany({
+    const giveaways = await (this.prisma as any).kickCoinsGiveaway.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       select: {
@@ -64,7 +67,7 @@ export class KickCoinsGiveawayService {
     });
 
     // Transform to include participant count
-    return giveaways.map((g) => ({
+    return giveaways.map((g: any) => ({
       id: g.id,
       userId: g.userId,
       name: g.name,
@@ -81,7 +84,7 @@ export class KickCoinsGiveawayService {
    * Get a single Kick Coins giveaway by ID
    */
   async findOne(userId: string, id: string) {
-    const giveaway = await this.prisma.kickCoinsGiveaway.findFirst({
+    const giveaway = await (this.prisma as any).kickCoinsGiveaway.findFirst({
       where: { id, userId },
       include: {
         participants: {
@@ -112,7 +115,7 @@ export class KickCoinsGiveawayService {
     const day = now.getDate().toString().padStart(2, '0');
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
     const year = now.getFullYear();
-    const categoryLabel = category === KickCoinsCategory.WEEKLY ? 'Semanal' : 'Mensal';
+    const categoryLabel = category === 'WEEKLY' ? 'Semanal' : 'Mensal';
     return `Sorteio de Kick Coins - ${categoryLabel} - ${day} ${month} ${year}`;
   }
 
@@ -125,7 +128,7 @@ export class KickCoinsGiveawayService {
     const name = this.generateGiveawayName(dto.category);
 
     // Create giveaway
-    const giveaway = await this.prisma.kickCoinsGiveaway.create({
+    const giveaway = await (this.prisma as any).kickCoinsGiveaway.create({
       data: {
         userId,
         name,
@@ -143,7 +146,7 @@ export class KickCoinsGiveawayService {
   async update(userId: string, id: string, dto: UpdateKickCoinsGiveawayDto) {
     await this.findOne(userId, id); // Ensure it exists and belongs to user
 
-    return this.prisma.kickCoinsGiveaway.update({
+    return (this.prisma as any).kickCoinsGiveaway.update({
       where: { id },
       data: dto,
     });
@@ -155,7 +158,7 @@ export class KickCoinsGiveawayService {
   async remove(userId: string, id: string) {
     await this.findOne(userId, id); // Ensure it exists and belongs to user
 
-    await this.prisma.kickCoinsGiveaway.delete({
+    await (this.prisma as any).kickCoinsGiveaway.delete({
       where: { id },
     });
   }
@@ -178,7 +181,7 @@ export class KickCoinsGiveawayService {
     }
 
     // Get the appropriate leaderboard array based on category
-    const leaderboardArray = category === KickCoinsCategory.WEEKLY 
+    const leaderboardArray = category === 'WEEKLY' 
       ? leaderboardData.data.week 
       : leaderboardData.data.month;
 
@@ -254,7 +257,7 @@ export class KickCoinsGiveawayService {
           // Update avatarUrl in database if requested and profile_picture exists
           if (updateAvatarUrl && userData.profile_picture) {
             try {
-              const updatedParticipant = await this.prisma.kickCoinsGiveawayParticipant.update({
+              const updatedParticipant = await (this.prisma as any).kickCoinsGiveawayParticipant.update({
                 where: { id: participant.id },
                 data: { avatarUrl: userData.profile_picture },
               });
@@ -316,7 +319,7 @@ export class KickCoinsGiveawayService {
     }
 
     // Delete existing participants
-    await this.prisma.kickCoinsGiveawayParticipant.deleteMany({
+    await (this.prisma as any).kickCoinsGiveawayParticipant.deleteMany({
       where: { kickCoinsGiveawayId: giveawayId },
     });
 
@@ -328,7 +331,7 @@ export class KickCoinsGiveawayService {
 
       // Only create participant if they have tickets
       if (tickets > 0) {
-        const participant = await this.prisma.kickCoinsGiveawayParticipant.create({
+        const participant = await (this.prisma as any).kickCoinsGiveawayParticipant.create({
           data: {
             kickCoinsGiveawayId: giveawayId,
             externalUserId: entry.user_id.toString(),
@@ -366,14 +369,14 @@ export class KickCoinsGiveawayService {
     const giveaway = await this.findOne(userId, giveawayId);
 
     // Count existing winners to determine repick number
-    const existingWinners = await this.prisma.kickCoinsGiveawayWinner.findMany({
+    const existingWinners = await (this.prisma as any).kickCoinsGiveawayWinner.findMany({
       where: { kickCoinsGiveawayId: giveawayId },
     });
     const repickNumber = existingWinners.length > 0 ? existingWinners.length : null;
 
     // If this is a repick, mark current winner as REPICK first
     if (repickNumber !== null && repickNumber > 0) {
-      await this.prisma.kickCoinsGiveawayWinner.updateMany({
+      await (this.prisma as any).kickCoinsGiveawayWinner.updateMany({
         where: {
           kickCoinsGiveawayId: giveawayId,
           status: 'WINNER' as any,
@@ -386,7 +389,7 @@ export class KickCoinsGiveawayService {
 
     // Fetch all participants ordered by creation date (or ID as fallback)
     // Exclude participants that have been repicked (have a winner entry with status REPICK)
-    const repickedWinners = await this.prisma.kickCoinsGiveawayWinner.findMany({
+    const repickedWinners = await (this.prisma as any).kickCoinsGiveawayWinner.findMany({
       where: {
         kickCoinsGiveawayId: giveawayId,
         status: 'REPICK' as any,
@@ -396,9 +399,9 @@ export class KickCoinsGiveawayService {
       },
     });
 
-    const repickedParticipantIds = new Set(repickedWinners.map((w) => w.winnerParticipantId));
+    const repickedParticipantIds = new Set(repickedWinners.map((w: any) => w.winnerParticipantId));
 
-    const allParticipants = await this.prisma.kickCoinsGiveawayParticipant.findMany({
+    const allParticipants = await (this.prisma as any).kickCoinsGiveawayParticipant.findMany({
       where: { kickCoinsGiveawayId: giveawayId },
       orderBy: [
         { createdAt: 'asc' },
@@ -407,7 +410,7 @@ export class KickCoinsGiveawayService {
     });
 
     // Filter out repicked participants
-    const participants = allParticipants.filter((p) => !repickedParticipantIds.has(p.id));
+    const participants = allParticipants.filter((p: any) => !repickedParticipantIds.has(p.id));
 
     if (participants.length === 0) {
       throw new BadRequestException('Cannot draw winner: no eligible participants found (all have been repicked)');
@@ -472,7 +475,7 @@ export class KickCoinsGiveawayService {
     const verificationUrl = this.generateRandomOrgVerificationUrl(randomPayload, signature);
 
     // Save new winner to database
-    await this.prisma.kickCoinsGiveawayWinner.create({
+    await (this.prisma as any).kickCoinsGiveawayWinner.create({
       data: {
         kickCoinsGiveawayId: giveawayId,
         winnerParticipantId: winner.id,

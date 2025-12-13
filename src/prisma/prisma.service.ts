@@ -6,6 +6,11 @@ export class PrismaService
   extends PrismaClient<Prisma.PrismaClientOptions, 'beforeExit'>
   implements OnModuleInit, OnModuleDestroy
 {
+  // Force TypeScript to recognize all Prisma models
+  constructor() {
+    super();
+  }
+
   async onModuleInit() {
     await this.$connect();
   }

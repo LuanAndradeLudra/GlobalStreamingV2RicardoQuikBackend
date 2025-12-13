@@ -1,12 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
-import { ConnectedPlatform, TwitchBitsCategory } from '@prisma/client';
+import { ConnectedPlatform, Prisma } from '@prisma/client';
 import { CreateTwitchBitsGiveawayDto } from './dto/create-twitch-bits-giveaway.dto';
 import { UpdateTwitchBitsGiveawayDto } from './dto/update-twitch-bits-giveaway.dto';
 import { DrawResponseDto } from '../giveaway/dto/draw-response.dto';
 import { TwitchService } from '../twitch/twitch.service';
 import * as crypto from 'crypto';
+
+// Import enum type from Prisma
+type TwitchBitsCategory = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
 interface TwitchBitsLeaderboardResponse {
   data: Array<{
@@ -30,7 +33,7 @@ export class TwitchBitsGiveawayService {
    * Get all Twitch Bits giveaways for a user (without participants and winners for performance)
    */
   async findAll(userId: string) {
-    const giveaways = await this.prisma.twitchBitsGiveaway.findMany({
+    const giveaways = await (this.prisma as any).twitchBitsGiveaway.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       select: {
@@ -52,7 +55,7 @@ export class TwitchBitsGiveawayService {
     });
 
     // Transform to include participant count
-    return giveaways.map((g) => ({
+    return giveaways.map((g: any) => ({
       id: g.id,
       userId: g.userId,
       name: g.name,
@@ -71,7 +74,7 @@ export class TwitchBitsGiveawayService {
    * Get a single Twitch Bits giveaway by ID
    */
   async findOne(userId: string, id: string) {
-    const giveaway = await this.prisma.twitchBitsGiveaway.findFirst({
+    const giveaway = await (this.prisma as any).twitchBitsGiveaway.findFirst({
       where: { id, userId },
       include: {
         participants: {
@@ -107,9 +110,9 @@ export class TwitchBitsGiveawayService {
     const year = now.getFullYear();
 
     const categoryLabel =
-      category === TwitchBitsCategory.DAILY
+      category === 'DAILY'
         ? 'Diário'
-        : category === TwitchBitsCategory.WEEKLY
+        : category === 'WEEKLY'
           ? 'Semanal'
           : 'Mensal';
     return `Sorteio de Bits - ${categoryLabel} - ${day} ${month} ${year}`;
@@ -121,7 +124,7 @@ export class TwitchBitsGiveawayService {
    */
   async create(userId: string, dto: CreateTwitchBitsGiveawayDto) {
     // Validate required dates based on category
-    if (dto.category === TwitchBitsCategory.DAILY || dto.category === TwitchBitsCategory.WEEKLY || dto.category === TwitchBitsCategory.MONTHLY) {
+    if (dto.category === 'DAILY' || dto.category === 'WEEKLY' || dto.category === 'MONTHLY') {
       if (!dto.startDate) {
         throw new BadRequestException('startDate is required for DAILY, WEEKLY, and MONTHLY categories');
       }
@@ -134,7 +137,7 @@ export class TwitchBitsGiveawayService {
     );
 
     // Create giveaway
-    const giveaway = await this.prisma.twitchBitsGiveaway.create({
+    const giveaway = await (this.prisma as any).twitchBitsGiveaway.create({
       data: {
         userId,
         name,
@@ -154,7 +157,7 @@ export class TwitchBitsGiveawayService {
   async update(userId: string, id: string, dto: UpdateTwitchBitsGiveawayDto) {
     await this.findOne(userId, id); // Ensure it exists and belongs to user
 
-    return this.prisma.twitchBitsGiveaway.update({
+    return (this.prisma as any).twitchBitsGiveaway.update({
       where: { id },
       data: dto,
     });
@@ -166,7 +169,7 @@ export class TwitchBitsGiveawayService {
   async remove(userId: string, id: string) {
     await this.findOne(userId, id); // Ensure it exists and belongs to user
 
-    await this.prisma.twitchBitsGiveaway.delete({
+    await (this.prisma as any).twitchBitsGiveaway.delete({
       where: { id },
     });
   }
@@ -257,7 +260,7 @@ export class TwitchBitsGiveawayService {
           // Update avatarUrl in database if requested and profile_image_url exists
           if (updateAvatarUrl && userData.profile_image_url) {
             try {
-              const updatedParticipant = await this.prisma.twitchBitsGiveawayParticipant.update({
+              const updatedParticipant = await (this.prisma as any).twitchBitsGiveawayParticipant.update({
                 where: { id: participant.id },
                 data: { avatarUrl: userData.profile_image_url },
               });
@@ -325,7 +328,7 @@ export class TwitchBitsGiveawayService {
     }
 
     // Delete existing participants
-    await this.prisma.twitchBitsGiveawayParticipant.deleteMany({
+    await (this.prisma as any).twitchBitsGiveawayParticipant.deleteMany({
       where: { twitchBitsGiveawayId: giveawayId },
     });
 
@@ -337,7 +340,7 @@ export class TwitchBitsGiveawayService {
 
       // Only create participant if they have tickets
       if (tickets > 0) {
-        const participant = await this.prisma.twitchBitsGiveawayParticipant.create({
+        const participant = await (this.prisma as any).twitchBitsGiveawayParticipant.create({
           data: {
             twitchBitsGiveawayId: giveawayId,
             externalUserId: entry.user_id,
@@ -375,14 +378,14 @@ export class TwitchBitsGiveawayService {
     const giveaway = await this.findOne(userId, giveawayId);
 
     // Count existing winners to determine repick number
-    const existingWinners = await this.prisma.twitchBitsGiveawayWinner.findMany({
+    const existingWinners = await (this.prisma as any).twitchBitsGiveawayWinner.findMany({
       where: { twitchBitsGiveawayId: giveawayId },
     });
     const repickNumber = existingWinners.length > 0 ? existingWinners.length : null;
 
     // If this is a repick, mark current winner as REPICK first
     if (repickNumber !== null && repickNumber > 0) {
-      await this.prisma.twitchBitsGiveawayWinner.updateMany({
+      await (this.prisma as any).twitchBitsGiveawayWinner.updateMany({
         where: {
           twitchBitsGiveawayId: giveawayId,
           status: 'WINNER' as any,
@@ -395,7 +398,7 @@ export class TwitchBitsGiveawayService {
 
     // Fetch all participants ordered by creation date (or ID as fallback)
     // Exclude participants that have been repicked (have a winner entry with status REPICK)
-    const repickedWinners = await this.prisma.twitchBitsGiveawayWinner.findMany({
+    const repickedWinners = await (this.prisma as any).twitchBitsGiveawayWinner.findMany({
       where: {
         twitchBitsGiveawayId: giveawayId,
         status: 'REPICK' as any,
@@ -405,9 +408,9 @@ export class TwitchBitsGiveawayService {
       },
     });
 
-    const repickedParticipantIds = new Set(repickedWinners.map((w) => w.winnerParticipantId));
+    const repickedParticipantIds = new Set(repickedWinners.map((w: any) => w.winnerParticipantId));
 
-    const allParticipants = await this.prisma.twitchBitsGiveawayParticipant.findMany({
+    const allParticipants = await (this.prisma as any).twitchBitsGiveawayParticipant.findMany({
       where: { twitchBitsGiveawayId: giveawayId },
       orderBy: [
         { createdAt: 'asc' },
@@ -416,7 +419,7 @@ export class TwitchBitsGiveawayService {
     });
 
     // Filter out repicked participants
-    const participants = allParticipants.filter((p) => !repickedParticipantIds.has(p.id));
+    const participants = allParticipants.filter((p: any) => !repickedParticipantIds.has(p.id));
 
     if (participants.length === 0) {
       throw new BadRequestException('Cannot draw winner: no eligible participants found (all have been repicked)');
@@ -481,7 +484,7 @@ export class TwitchBitsGiveawayService {
     const verificationUrl = this.generateRandomOrgVerificationUrl(randomPayload, signature);
 
     // Save new winner to database
-    await this.prisma.twitchBitsGiveawayWinner.create({
+    await (this.prisma as any).twitchBitsGiveawayWinner.create({
       data: {
         twitchBitsGiveawayId: giveawayId,
         winnerParticipantId: winner.id,
