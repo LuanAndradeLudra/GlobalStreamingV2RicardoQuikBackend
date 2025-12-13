@@ -48,8 +48,7 @@ export class TwitchService {
   /**
    * Calculate started_at for the current period
    * - For 'week': Returns Monday of the NEXT week (current Monday + 7 days) at 00:00:00 UTC
-   *   This is because Twitch API requires started_at to be the Monday of next week
-   * - For 'month': Returns the 1st day of the current month at 00:00:00 UTC
+   * - For 'month': Returns the 1st day of the NEXT month at 00:00:00 UTC
    * - For other periods: Returns undefined (uses Twitch's default)
    */
   private calculateStartedAt(period: 'day' | 'week' | 'month' | 'all' | 'year'): string | undefined {
@@ -70,9 +69,9 @@ export class TwitchService {
     }
 
     if (period === 'month') {
-      // Get 1st day of the current month
-      const firstDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
-      return firstDay.toISOString();
+      // Get 1st day of the next month
+      const firstDayNextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0));
+      return firstDayNextMonth.toISOString();
     }
 
     // For 'day', 'all', 'year' - don't send started_at (use Twitch's default)
