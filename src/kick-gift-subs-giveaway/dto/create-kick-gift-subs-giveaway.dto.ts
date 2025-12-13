@@ -11,3 +11,6 @@ export class CreateKickGiftSubsGiveawayDto {
   @IsEnum(KickGiftSubsCategory)
   category: KickGiftSubsCategory;
 }
+
+
+

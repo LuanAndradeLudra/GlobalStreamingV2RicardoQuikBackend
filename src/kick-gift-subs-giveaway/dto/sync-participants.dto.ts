@@ -47,3 +47,6 @@ export class SyncParticipantsDto {
   @IsBoolean()
   gifts_month_enabled: boolean;
 }
+
+
+

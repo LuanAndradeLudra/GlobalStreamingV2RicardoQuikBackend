@@ -1057,5 +1057,227 @@ export class ConnectedAccountsController {
       throw new BadRequestException(`Failed to stop chat polling: ${errorMessage}`);
     }
   }
+
+  @Post('twitch/refresh-token')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-twitch')
+  @ApiOperation({
+    summary: 'Refresh Twitch access token',
+    description: 'Refreshes the Twitch access token using the stored refresh token',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Token refreshed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        accessToken: { type: 'string' },
+        expiresAt: { type: 'string', format: 'date-time', nullable: true },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - no account connected or missing refresh token',
+  })
+  async refreshTwitchToken(@CurrentUser() user: User): Promise<any> {
+    try {
+      // Find Twitch connected account
+      const accounts = await this.connectedAccountsService.findAll(user.id);
+      const twitchAccount = accounts.find((acc) => acc.platform === 'TWITCH');
+
+      if (!twitchAccount) {
+        throw new BadRequestException('No Twitch account connected');
+      }
+
+      if (!twitchAccount.refreshToken) {
+        throw new BadRequestException('Twitch account missing refresh token. Please reconnect your account.');
+      }
+
+      // Refresh the token
+      const tokenResponse = await this.twitchOAuthService.refreshAccessToken(twitchAccount.refreshToken);
+
+      // Calculate expiration date
+      const expiresAt = tokenResponse.expires_in
+        ? new Date(Date.now() + tokenResponse.expires_in * 1000)
+        : undefined;
+
+      // Update the account with new tokens
+      const createDto: CreateConnectedAccountDto = {
+        platform: 'TWITCH' as ConnectedPlatform,
+        externalChannelId: twitchAccount.externalChannelId,
+        displayName: twitchAccount.displayName,
+        accessToken: tokenResponse.access_token,
+        refreshToken: tokenResponse.refresh_token ?? twitchAccount.refreshToken ?? undefined, // Use new refresh token if provided, otherwise keep old one
+        scopes: Array.isArray(tokenResponse.scope) ? tokenResponse.scope.join(' ') : twitchAccount.scopes ?? undefined,
+        expiresAt: expiresAt?.toISOString(),
+      };
+
+      await this.connectedAccountsService.createOrUpdate(user.id, createDto);
+
+      return {
+        success: true,
+        message: 'Twitch token refreshed successfully',
+        accessToken: tokenResponse.access_token,
+        expiresAt: expiresAt?.toISOString(),
+      };
+    } catch (error: unknown) {
+      console.error('Error refreshing Twitch token:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Failed to refresh token: ${errorMessage}`);
+    }
+  }
+
+  @Post('kick/refresh-token')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-kick')
+  @ApiOperation({
+    summary: 'Refresh Kick access token',
+    description: 'Refreshes the Kick access token using the stored refresh token',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Token refreshed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        accessToken: { type: 'string' },
+        expiresAt: { type: 'string', format: 'date-time', nullable: true },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - no account connected or missing refresh token',
+  })
+  async refreshKickToken(@CurrentUser() user: User): Promise<any> {
+    try {
+      // Find Kick connected account
+      const accounts = await this.connectedAccountsService.findAll(user.id);
+      const kickAccount = accounts.find((acc) => acc.platform === 'KICK');
+
+      if (!kickAccount) {
+        throw new BadRequestException('No Kick account connected');
+      }
+
+      if (!kickAccount.refreshToken) {
+        throw new BadRequestException('Kick account missing refresh token. Please reconnect your account.');
+      }
+
+      // Refresh the token
+      const tokenResponse = await this.kickOAuthService.refreshAccessToken(kickAccount.refreshToken);
+
+      // Calculate expiration date
+      const expiresAt = tokenResponse.expires_in
+        ? new Date(Date.now() + tokenResponse.expires_in * 1000)
+        : undefined;
+
+      // Update the account with new tokens
+      const createDto: CreateConnectedAccountDto = {
+        platform: 'KICK' as ConnectedPlatform,
+        externalChannelId: kickAccount.externalChannelId,
+        displayName: kickAccount.displayName,
+        accessToken: tokenResponse.access_token,
+        refreshToken: tokenResponse.refresh_token ?? kickAccount.refreshToken ?? undefined, // Use new refresh token if provided, otherwise keep old one
+        scopes: tokenResponse.scope ?? kickAccount.scopes ?? undefined,
+        expiresAt: expiresAt?.toISOString(),
+      };
+
+      await this.connectedAccountsService.createOrUpdate(user.id, createDto);
+
+      return {
+        success: true,
+        message: 'Kick token refreshed successfully',
+        accessToken: tokenResponse.access_token,
+        expiresAt: expiresAt?.toISOString(),
+      };
+    } catch (error: unknown) {
+      console.error('Error refreshing Kick token:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Failed to refresh token: ${errorMessage}`);
+    }
+  }
+
+  @Post('youtube/refresh-token')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-youtube')
+  @ApiOperation({
+    summary: 'Refresh YouTube access token',
+    description: 'Refreshes the YouTube access token using the stored refresh token',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Token refreshed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        accessToken: { type: 'string' },
+        expiresAt: { type: 'string', format: 'date-time', nullable: true },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - no account connected or missing refresh token',
+  })
+  async refreshYouTubeToken(@CurrentUser() user: User): Promise<any> {
+    try {
+      // Find YouTube connected account
+      const accounts = await this.connectedAccountsService.findAll(user.id);
+      const youtubeAccount = accounts.find((acc) => acc.platform === 'YOUTUBE');
+
+      if (!youtubeAccount) {
+        throw new BadRequestException('No YouTube account connected');
+      }
+
+      if (!youtubeAccount.refreshToken) {
+        throw new BadRequestException('YouTube account missing refresh token. Please reconnect your account.');
+      }
+
+      // Refresh the token
+      const tokenResponse = await this.youtubeOAuthService.refreshAccessToken(youtubeAccount.refreshToken);
+
+      // Calculate expiration date
+      const expiresAt = tokenResponse.expires_in
+        ? new Date(Date.now() + tokenResponse.expires_in * 1000)
+        : undefined;
+
+      // Update the account with new tokens
+      const createDto: CreateConnectedAccountDto = {
+        platform: 'YOUTUBE' as ConnectedPlatform,
+        externalChannelId: youtubeAccount.externalChannelId,
+        displayName: youtubeAccount.displayName,
+        accessToken: tokenResponse.access_token,
+        refreshToken: tokenResponse.refresh_token ?? youtubeAccount.refreshToken ?? undefined, // Use new refresh token if provided, otherwise keep old one
+        scopes: tokenResponse.scope ?? youtubeAccount.scopes ?? undefined,
+        expiresAt: expiresAt?.toISOString(),
+      };
+
+      await this.connectedAccountsService.createOrUpdate(user.id, createDto);
+
+      return {
+        success: true,
+        message: 'YouTube token refreshed successfully',
+        accessToken: tokenResponse.access_token,
+        expiresAt: expiresAt?.toISOString(),
+      };
+    } catch (error: unknown) {
+      console.error('Error refreshing YouTube token:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Failed to refresh token: ${errorMessage}`);
+    }
+  }
 }
 
