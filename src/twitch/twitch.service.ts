@@ -46,8 +46,45 @@ export class TwitchService {
   }
 
   /**
+   * Calculate started_at for the current period
+   * - For 'week': Returns Monday of the NEXT week (current Monday + 7 days) at 00:00:00 UTC
+   *   This is because Twitch API requires started_at to be the Monday of next week
+   * - For 'month': Returns the 1st day of the current month at 00:00:00 UTC
+   * - For other periods: Returns undefined (uses Twitch's default)
+   */
+  private calculateStartedAt(period: 'day' | 'week' | 'month' | 'all' | 'year'): string | undefined {
+    const now = new Date();
+
+    if (period === 'week') {
+      // Get Monday of the current week
+      const dayOfWeek = now.getUTCDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+      const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // If Sunday, go back 6 days
+      const monday = new Date(now);
+      monday.setUTCDate(now.getUTCDate() + daysToMonday);
+      monday.setUTCHours(0, 0, 0, 0);
+      
+      // Add 7 days to get the Monday of the next week
+      monday.setUTCDate(monday.getUTCDate() + 7);
+      
+      return monday.toISOString();
+    }
+
+    if (period === 'month') {
+      // Get 1st day of the current month
+      const firstDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
+      return firstDay.toISOString();
+    }
+
+    // For 'day', 'all', 'year' - don't send started_at (use Twitch's default)
+    return undefined;
+  }
+
+  /**
    * Get Bits leaderboard from Twitch API
    * GET https://api.twitch.tv/helix/bits/leaderboard?period=week&started_at=2025-11-11T00:00:00.0Z
+   * 
+   * Note: For 'week' period, automatically calculates Monday of the current week
+   * For 'month' period, automatically calculates the 1st day of the current month
    */
   async getBitsLeaderboard(
     userId: string,
@@ -57,14 +94,20 @@ export class TwitchService {
     try {
       const accessToken = await this.getTwitchAccessToken(userId);
 
-      const params: any = {
+      // Build params object
+      const params: Record<string, any> = {
         period,
         count: 100,
       };
 
-      if (startedAt) {
-        params.started_at = startedAt;
+      // Use provided startedAt if given, otherwise calculate it automatically
+      const finalStartedAt = startedAt || this.calculateStartedAt(period);
+      
+      if (finalStartedAt) {
+        params.started_at = finalStartedAt;
       }
+
+      console.log('Fetching bits leaderboard with params:', params);
 
       const response = await this.axiosInstance.get(`${this.twitchApiUrl}/bits/leaderboard`, {
         headers: {
@@ -77,6 +120,7 @@ export class TwitchService {
       return response.data;
     } catch (error: any) {
       if (error.response) {
+        console.error('Twitch API Error Response:', error.response.data);
         const errorText = JSON.stringify(error.response.data || error.response.statusText);
         throw new BadRequestException(`Failed to fetch bits leaderboard: ${errorText}`);
       }

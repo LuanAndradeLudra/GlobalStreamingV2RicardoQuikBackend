@@ -77,6 +77,11 @@ enum TwitchGiftSubsCategory {
   ACTIVE
 }
 
+enum IntegratedBitsKickCoinsCategory {
+  WEEKLY
+  MONTHLY
+}
+
 model User {
   id                        String                     @id @default(uuid())
   email                     String                     @unique
@@ -92,9 +97,10 @@ model User {
   ticketGlobalDonationRules TicketGlobalDonationRule[]
   streamGiveaways           StreamGiveaway[]
   kickGiftSubsGiveaways     KickGiftSubsGiveaway[]
-  kickCoinsGiveaways        KickCoinsGiveaway[]
-  twitchBitsGiveaways       TwitchBitsGiveaway[]
-  twitchGiftSubsGiveaways   TwitchGiftSubsGiveaway[]
+  kickCoinsGiveaways              KickCoinsGiveaway[]
+  twitchBitsGiveaways             TwitchBitsGiveaway[]
+  twitchGiftSubsGiveaways         TwitchGiftSubsGiveaway[]
+  integratedBitsKickCoinsGiveaways IntegratedBitsKickCoinsGiveaway[]
 
   @@unique([provider, providerId])
 }
@@ -502,4 +508,64 @@ model TwitchGiftSubsGiveawayWinner {
   @@index([twitchGiftSubsGiveawayId])
   @@index([twitchGiftSubsGiveawayId, status])
   @@index([winnerParticipantId])
+}
+
+// Integrated Bits + Kick Coins Giveaways - sorteios integrados de Twitch Bits e Kick Coins
+model IntegratedBitsKickCoinsGiveaway {
+  id        String                             @id @default(uuid())
+  userId    String
+  name      String
+  category  IntegratedBitsKickCoinsCategory    // WEEKLY ou MONTHLY
+  createdAt DateTime                           @default(now())
+  updatedAt DateTime                           @updatedAt
+
+  user         User                                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  participants IntegratedBitsKickCoinsGiveawayParticipant[]
+  winners      IntegratedBitsKickCoinsGiveawayWinner[]
+
+  @@index([userId])
+}
+
+model IntegratedBitsKickCoinsGiveawayParticipant {
+  id                                String            @id @default(uuid())
+  integratedBitsKickCoinsGiveawayId String
+  platform                          ConnectedPlatform // TWITCH ou KICK
+  externalUserId                    String            // user_id da API da Twitch ou Kick
+  username                          String
+  avatarUrl                         String?           // URL da foto/avatar do participante
+  amount                            Int               // Quantidade de bits (Twitch) ou kick coins (Kick)
+  tickets                           Int               // Quantidade de tickets calculados
+  createdAt                         DateTime          @default(now())
+  updatedAt                         DateTime          @updatedAt
+
+  integratedBitsKickCoinsGiveaway IntegratedBitsKickCoinsGiveaway         @relation(fields: [integratedBitsKickCoinsGiveawayId], references: [id], onDelete: Cascade)
+  winnerIn                        IntegratedBitsKickCoinsGiveawayWinner[] @relation("IntegratedBitsKickCoinsWinnerParticipant")
+
+  @@index([integratedBitsKickCoinsGiveawayId], map: "integrated_bits_kick_participant_giveaway_id_idx")
+  @@index([integratedBitsKickCoinsGiveawayId, platform, externalUserId], map: "integrated_bits_kick_participant_platform_user_idx")
+}
+
+model IntegratedBitsKickCoinsGiveawayWinner {
+  id                                 String                  @id @default(uuid())
+  integratedBitsKickCoinsGiveawayId  String
+  winnerParticipantId                String                  // ID do participante vencedor
+  status                             WinnerStatus            // WINNER ou REPICK
+  participantRanges                  Json                    // Array de ranges: [{id, display, start, end}]
+  totalTickets                       Int                     // Total de tickets no sorteio
+  listHashAlgo                       String                  // SHA256 ou MD5
+  listHash                           String                  // Hash da lista de participantes
+  randomOrgRandom                    Json                    // Payload completo do Random.org (result.random)
+  randomOrgSignature                 String                  // Assinatura do Random.org
+  randomOrgVerificationUrl           String                  // URL para verificar a assinatura
+  drawnNumber                        Int                     // Número sorteado
+  verified                           Boolean                 // Se a assinatura foi verificada
+  createdAt                          DateTime                @default(now())
+  updatedAt                          DateTime                @updatedAt
+
+  integratedBitsKickCoinsGiveaway IntegratedBitsKickCoinsGiveaway            @relation(fields: [integratedBitsKickCoinsGiveawayId], references: [id], onDelete: Cascade)
+  winnerParticipant               IntegratedBitsKickCoinsGiveawayParticipant @relation("IntegratedBitsKickCoinsWinnerParticipant", fields: [winnerParticipantId], references: [id], onDelete: Cascade)
+
+  @@index([integratedBitsKickCoinsGiveawayId], map: "integrated_bits_kick_winner_giveaway_id_idx")
+  @@index([integratedBitsKickCoinsGiveawayId, status], map: "integrated_bits_kick_winner_giveaway_id_status_idx")
+  @@index([winnerParticipantId], map: "integrated_bits_kick_winner_participant_id_idx")
 }
