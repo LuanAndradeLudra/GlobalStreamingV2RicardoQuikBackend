@@ -5,6 +5,7 @@ import { ConnectedPlatform, KickGiftSubsCategory } from '@prisma/client';
 import { CreateKickGiftSubsGiveawayDto } from './dto/create-kick-gift-subs-giveaway.dto';
 import { UpdateKickGiftSubsGiveawayDto } from './dto/update-kick-gift-subs-giveaway.dto';
 import { DrawResponseDto } from '../giveaway/dto/draw-response.dto';
+import { KickService } from '../kick/kick.service';
 import * as crypto from 'crypto';
 
 interface KickLeaderboardResponse {
@@ -33,6 +34,7 @@ export class KickGiftSubsGiveawayService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly kickService: KickService,
   ) {}
 
   /**
@@ -196,6 +198,109 @@ export class KickGiftSubsGiveawayService {
   }
 
   /**
+   * Helper method to fetch user data from Kick API and enrich participants
+   * This method can be reused in other features that need user data
+   * @param userId - The admin user ID (for authentication)
+   * @param participants - Array of participants to enrich
+   * @param updateAvatarUrl - Whether to update avatarUrl in database (default: true)
+   * @returns Enriched participants with userData field
+   */
+  async enrichParticipantsWithUserData(
+    userId: string,
+    participants: Array<{ id: string; externalUserId: string; [key: string]: any }>,
+    updateAvatarUrl: boolean = true,
+  ): Promise<Array<any>> {
+    if (!participants || participants.length === 0) {
+      return participants.map((p) => ({
+        ...p,
+        userData: null,
+      }));
+    }
+
+    const userIds = participants
+      .map((p) => parseInt(p.externalUserId, 10))
+      .filter((id) => !isNaN(id));
+
+    if (userIds.length === 0) {
+      return participants.map((p) => ({
+        ...p,
+        userData: null,
+      }));
+    }
+
+    try {
+      const usersResponse = await this.kickService.getUsers(userId, userIds);
+
+      // Create a map of user_id to user data
+      const usersMap = new Map<number, any>();
+      if (usersResponse?.data && Array.isArray(usersResponse.data)) {
+        usersResponse.data.forEach((user: any) => {
+          usersMap.set(user.user_id, user);
+        });
+      }
+
+      // Enrich participants with user data
+      const enrichedParticipants = await Promise.all(
+        participants.map(async (participant) => {
+          const kickUserId = parseInt(participant.externalUserId, 10);
+          const userData = usersMap.get(kickUserId);
+
+          if (!userData) {
+            return {
+              ...participant,
+              userData: null,
+            };
+          }
+
+          const userDataEnriched = {
+            user_id: userData.user_id,
+            name: userData.name,
+            email: userData.email,
+            profile_picture: userData.profile_picture,
+          };
+
+          // Update avatarUrl in database if requested and profile_picture exists
+          if (updateAvatarUrl && userData.profile_picture) {
+            try {
+              const updatedParticipant = await this.prisma.kickGiftSubsGiveawayParticipant.update({
+                where: { id: participant.id },
+                data: { avatarUrl: userData.profile_picture },
+              });
+
+              return {
+                ...updatedParticipant,
+                userData: userDataEnriched,
+              };
+            } catch (error) {
+              // If update fails, return participant with userData but without updating DB
+              console.warn(`Failed to update avatarUrl for participant ${participant.id}:`, error);
+              return {
+                ...participant,
+                userData: userDataEnriched,
+              };
+            }
+          }
+
+          return {
+            ...participant,
+            userData: userDataEnriched,
+          };
+        }),
+      );
+
+      return enrichedParticipants;
+    } catch (error) {
+      // If fetching user data fails, log but don't fail the entire operation
+      console.warn('Failed to fetch user data from Kick API:', error);
+      // Return participants without enrichment
+      return participants.map((p) => ({
+        ...p,
+        userData: null,
+      }));
+    }
+  }
+
+  /**
    * Process gifts array and create participants
    */
   private async processGiftsArray(
@@ -244,7 +349,8 @@ export class KickGiftSubsGiveawayService {
       }
     }
 
-    return participants;
+    // Enrich participants with user data from Kick API
+    return this.enrichParticipantsWithUserData(userId, participants, true);
   }
 
   /**
@@ -339,6 +445,11 @@ export class KickGiftSubsGiveawayService {
 
     if (participants.length === 0) {
       throw new BadRequestException('Cannot draw winner: no eligible participants found (all have been repicked)');
+    }
+
+    // Prevent drawing if there is only 1 participant
+    if (participants.length === 1) {
+      throw new BadRequestException('Cannot draw winner: at least 2 participants are required to draw a winner');
     }
 
     // Calculate ticket ranges - ensure repicked participants are not included
