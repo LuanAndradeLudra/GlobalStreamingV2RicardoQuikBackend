@@ -99,4 +99,48 @@ export class TwitchController {
 
     return this.twitchService.getUsers(user.id, idArray);
   }
+
+  @Get('subscriptions')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Get broadcaster subscriptions',
+    description: 'Returns all subscriptions for a broadcaster. Supports pagination with cursor.',
+  })
+  @ApiQuery({
+    name: 'broadcaster_id',
+    required: true,
+    type: String,
+    description: 'Broadcaster channel ID',
+  })
+  @ApiQuery({
+    name: 'after',
+    required: false,
+    type: String,
+    description: 'Pagination cursor',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Subscriptions retrieved successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - no Twitch account connected or invalid parameters',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - invalid token',
+  })
+  async getBroadcasterSubscriptions(
+    @CurrentUser() user: User,
+    @Query('broadcaster_id') broadcasterId: string,
+    @Query('after') after?: string,
+  ): Promise<any> {
+    if (!broadcasterId) {
+      throw new BadRequestException('broadcaster_id is required');
+    }
+
+    return this.twitchService.getBroadcasterSubscriptions(user.id, broadcasterId, after);
+  }
 }

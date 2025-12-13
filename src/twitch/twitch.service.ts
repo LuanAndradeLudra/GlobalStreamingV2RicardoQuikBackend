@@ -129,4 +129,47 @@ export class TwitchService {
       throw new InternalServerErrorException('Failed to fetch users');
     }
   }
+
+  /**
+   * Get broadcaster subscriptions from Twitch API with pagination
+   * GET https://api.twitch.tv/helix/subscriptions?broadcaster_id=68490587
+   */
+  async getBroadcasterSubscriptions(
+    userId: string,
+    broadcasterId: string,
+    after?: string,
+  ): Promise<any> {
+    try {
+      const accessToken = await this.getTwitchAccessToken(userId);
+
+      const params: any = {
+        broadcaster_id: broadcasterId,
+        first: 100, // Maximum allowed
+      };
+
+      if (after) {
+        params.after = after;
+      }
+
+      const response = await this.axiosInstance.get(`${this.twitchApiUrl}/subscriptions`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Client-Id': this.clientId,
+        },
+        params,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      if (error.response) {
+        const errorText = JSON.stringify(error.response.data || error.response.statusText);
+        throw new BadRequestException(`Failed to fetch broadcaster subscriptions: ${errorText}`);
+      }
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error fetching broadcaster subscriptions:', error);
+      throw new InternalServerErrorException('Failed to fetch broadcaster subscriptions');
+    }
+  }
 }

@@ -73,6 +73,10 @@ enum TwitchBitsCategory {
   MONTHLY
 }
 
+enum TwitchGiftSubsCategory {
+  ACTIVE
+}
+
 model User {
   id                        String                     @id @default(uuid())
   email                     String                     @unique
@@ -90,6 +94,7 @@ model User {
   kickGiftSubsGiveaways     KickGiftSubsGiveaway[]
   kickCoinsGiveaways        KickCoinsGiveaway[]
   twitchBitsGiveaways       TwitchBitsGiveaway[]
+  twitchGiftSubsGiveaways   TwitchGiftSubsGiveaway[]
 
   @@unique([provider, providerId])
 }
@@ -437,5 +442,64 @@ model TwitchBitsGiveawayWinner {
 
   @@index([twitchBitsGiveawayId])
   @@index([twitchBitsGiveawayId, status])
+  @@index([winnerParticipantId])
+}
+
+// Twitch Gift Subs Giveaways - sorteios baseados em gift subs da Twitch
+model TwitchGiftSubsGiveaway {
+  id        String                    @id @default(uuid())
+  userId    String
+  name      String
+  category  TwitchGiftSubsCategory // ACTIVE
+  createdAt DateTime                  @default(now())
+  updatedAt DateTime                  @updatedAt
+
+  user         User                                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  participants TwitchGiftSubsGiveawayParticipant[]
+  winners      TwitchGiftSubsGiveawayWinner[]
+
+  @@index([userId])
+}
+
+model TwitchGiftSubsGiveawayParticipant {
+  id                        String   @id @default(uuid())
+  twitchGiftSubsGiveawayId  String
+  externalUserId            String // gifter_id da API da Twitch
+  username                  String // gifter_name da API da Twitch
+  avatarUrl                 String? // URL da foto/avatar do participante
+  quantity                  Int // Quantidade de gift subs
+  tickets                   Int // Quantidade de tickets calculados
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  twitchGiftSubsGiveaway TwitchGiftSubsGiveaway         @relation(fields: [twitchGiftSubsGiveawayId], references: [id], onDelete: Cascade)
+  winnerIn               TwitchGiftSubsGiveawayWinner[] @relation("TwitchGiftSubsWinnerParticipant")
+
+  @@index([twitchGiftSubsGiveawayId])
+  @@index([twitchGiftSubsGiveawayId, externalUserId])
+}
+
+model TwitchGiftSubsGiveawayWinner {
+  id                         String       @id @default(uuid())
+  twitchGiftSubsGiveawayId   String
+  winnerParticipantId        String // ID do participante vencedor
+  status                     WinnerStatus // WINNER ou REPICK
+  participantRanges          Json // Array de ranges: [{id, display, start, end}]
+  totalTickets               Int // Total de tickets no sorteio
+  listHashAlgo               String // SHA256 ou MD5
+  listHash                   String // Hash da lista de participantes
+  randomOrgRandom            Json // Payload completo do Random.org (result.random)
+  randomOrgSignature         String // Assinatura do Random.org
+  randomOrgVerificationUrl   String // URL para verificar a assinatura
+  drawnNumber                Int // Número sorteado
+  verified                   Boolean // Se a assinatura foi verificada
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
+
+  twitchGiftSubsGiveaway TwitchGiftSubsGiveaway            @relation(fields: [twitchGiftSubsGiveawayId], references: [id], onDelete: Cascade)
+  winnerParticipant      TwitchGiftSubsGiveawayParticipant @relation("TwitchGiftSubsWinnerParticipant", fields: [winnerParticipantId], references: [id], onDelete: Cascade)
+
+  @@index([twitchGiftSubsGiveawayId])
+  @@index([twitchGiftSubsGiveawayId, status])
   @@index([winnerParticipantId])
 }

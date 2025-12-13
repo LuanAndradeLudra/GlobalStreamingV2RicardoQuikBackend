@@ -9,6 +9,7 @@ import { GiveawayModule } from './giveaway/giveaway.module';
 import { KickGiftSubsGiveawayModule } from './kick-gift-subs-giveaway/kick-gift-subs-giveaway.module';
 import { KickCoinsGiveawayModule } from './kick-coins-giveaway/kick-coins-giveaway.module';
 import { TwitchBitsGiveawayModule } from './twitch-bits-giveaway/twitch-bits-giveaway.module';
+import { TwitchGiftSubsGiveawayModule } from './twitch-gift-subs-giveaway/twitch-gift-subs-giveaway.module';
 import { RealtimeGatewayModule } from './realtime-gateway/realtime-gateway.module';
 import { SocialGiveawayModule } from './social-giveaway/social-giveaway.module';
 import { KickWebhooksModule } from './kick-webhooks/kick-webhooks.module';
@@ -29,6 +30,7 @@ import { YouTubeChatModule } from './youtube-chat/youtube-chat.module';
     KickGiftSubsGiveawayModule,
     KickCoinsGiveawayModule,
     TwitchBitsGiveawayModule,
+    TwitchGiftSubsGiveawayModule,
     RealtimeGatewayModule,
     SocialGiveawayModule,
     KickWebhooksModule,

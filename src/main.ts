@@ -3,12 +3,17 @@ import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     rawBody: true, // Enable raw body for webhook signature verification
   });
   const configService = app.get(ConfigService);
+
+  // Increase body size limit for large payloads (e.g., Twitch subscriptions with many gift subs)
+  app.use(bodyParser.json({ limit: '10mb' }));
+  app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
   // CORS configuration
   const frontendUrl = configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
