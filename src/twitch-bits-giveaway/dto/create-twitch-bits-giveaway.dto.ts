@@ -22,3 +22,4 @@ export class CreateTwitchBitsGiveawayDto {
   @IsDateString()
   startDate?: string;
 }
+

@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { StreamGiveawayRedisService } from '../stream-giveaway-redis/stream-giveaway-redis.service';
+import { RealtimeGateway } from '../realtime-gateway/realtime-gateway.gateway';
 import { CreateGiveawayDto } from './dto/create-giveaway.dto';
 import { UpdateGiveawayDto } from './dto/update-giveaway.dto';
 import { StreamGiveaway, StreamGiveawayStatus, ConnectedPlatform, StreamGiveawayParticipant } from '@prisma/client';
@@ -17,6 +19,8 @@ export class GiveawayService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly redisService: StreamGiveawayRedisService,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   /**
@@ -376,7 +380,22 @@ export class GiveawayService {
     });
 
     // Fetch with relations
-    return this.findOne(userId, streamGiveaway.id);
+    const giveawayWithRelations = await this.findOne(userId, streamGiveaway.id);
+
+    // Se status é OPEN, publica no Redis
+    if (status === StreamGiveawayStatus.OPEN) {
+      await this.publishGiveawayToRedis(giveawayWithRelations);
+      
+      // Broadcast evento de sorteio aberto
+      this.realtimeGateway.emitGiveawayOpened({
+        streamGiveawayId: giveawayWithRelations.id,
+        name: giveawayWithRelations.name,
+        keyword: giveawayWithRelations.keyword,
+        platforms: (giveawayWithRelations.platforms as ConnectedPlatform[]).map(p => p.toString()),
+      });
+    }
+
+    return giveawayWithRelations;
   }
 
   /**
@@ -541,6 +560,9 @@ export class GiveawayService {
     if (dto.status === StreamGiveawayStatus.OPEN) {
       await this.checkOnlyOneOpenGiveaway(userId, id);
     }
+
+    // Store old status to compare after update
+    const oldStatus = existingStreamGiveaway.status;
 
     // Update stream giveaway and overrides in a transaction
     await this.prisma.$transaction(async (tx) => {
@@ -714,7 +736,34 @@ export class GiveawayService {
       }
     });
 
-    return this.findOne(userId, id);
+    const updatedGiveaway = await this.findOne(userId, id);
+
+    // Gerenciar Redis baseado em mudança de status
+    const newStatus = dto.status ?? oldStatus;
+
+    // Se mudou para OPEN, publica no Redis
+    if (newStatus === StreamGiveawayStatus.OPEN && oldStatus !== StreamGiveawayStatus.OPEN) {
+      await this.publishGiveawayToRedis(updatedGiveaway);
+      
+      this.realtimeGateway.emitGiveawayOpened({
+        streamGiveawayId: updatedGiveaway.id,
+        name: updatedGiveaway.name,
+        keyword: updatedGiveaway.keyword,
+        platforms: (updatedGiveaway.platforms as ConnectedPlatform[]).map(p => p.toString()),
+      });
+    }
+
+    // Se mudou de OPEN para CLOSED/DONE, remove do Redis
+    if (oldStatus === StreamGiveawayStatus.OPEN && newStatus !== StreamGiveawayStatus.OPEN) {
+      await this.removeGiveawayFromRedis(updatedGiveaway);
+      
+      this.realtimeGateway.emitGiveawayClosed({
+        streamGiveawayId: updatedGiveaway.id,
+        name: updatedGiveaway.name,
+      });
+    }
+
+    return updatedGiveaway;
   }
 
   /**
@@ -1341,4 +1390,44 @@ export class GiveawayService {
     // This should never happen if ranges are correct, but throw error as fallback
     throw new BadRequestException(`Could not find winner for ticket index ${ticketIndex}`);
   }
+
+  /**
+   * Publica sorteio ativo no Redis para processamento de webhooks
+   */
+  private async publishGiveawayToRedis(giveaway: any): Promise<void> {
+    this.logger.log(`📤 Publishing giveaway to Redis: ${giveaway.id}`);
+
+    await this.redisService.publishActiveGiveaway({
+      streamGiveawayId: giveaway.id,
+      userId: giveaway.userId,
+      keyword: giveaway.keyword,
+      platforms: giveaway.platforms as ConnectedPlatform[],
+      allowedRoles: giveaway.allowedRoles as string[],
+      donationConfigs: giveaway.donationConfigs?.map((config: any) => ({
+        platform: config.platform,
+        unitType: config.unitType,
+        donationWindow: config.donationWindow,
+      })) || [],
+    });
+
+    this.logger.log(`✅ Giveaway published to Redis: ${giveaway.id}`);
+  }
+
+  /**
+   * Remove sorteio ativo do Redis
+   */
+  private async removeGiveawayFromRedis(giveaway: any): Promise<void> {
+    this.logger.log(`📥 Removing giveaway from Redis: ${giveaway.id}`);
+
+    await this.redisService.removeActiveGiveaway({
+      streamGiveawayId: giveaway.id,
+      userId: giveaway.userId,
+      keyword: giveaway.keyword,
+      platforms: giveaway.platforms as ConnectedPlatform[],
+    });
+
+    this.logger.log(`✅ Giveaway removed from Redis: ${giveaway.id}`);
+  }
+
+  private readonly logger = new Logger(GiveawayService.name);
 }

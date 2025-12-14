@@ -4,3 +4,4 @@ import { CreateIntegratedBitsKickCoinsGiveawayDto } from './create-integrated-bi
 export class UpdateIntegratedBitsKickCoinsGiveawayDto extends PartialType(
   CreateIntegratedBitsKickCoinsGiveawayDto,
 ) {}
+

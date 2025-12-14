@@ -15,3 +15,4 @@ export class CreateTwitchGiftSubsGiveawayDto {
   @IsNotEmpty()
   category: TwitchGiftSubsCategory;
 }
+

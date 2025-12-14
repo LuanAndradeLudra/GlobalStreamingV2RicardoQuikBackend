@@ -660,3 +660,4 @@ export class TwitchGiftSubsGiveawayService {
     throw new BadRequestException(`Could not find winner for ticket index ${ticketIndex}`);
   }
 }
+

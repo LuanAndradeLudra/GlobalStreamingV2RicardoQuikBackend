@@ -10,3 +10,4 @@ import { ConnectedAccountsModule } from '../connected-accounts/connected-account
   exports: [TwitchService],
 })
 export class TwitchModule {}
+

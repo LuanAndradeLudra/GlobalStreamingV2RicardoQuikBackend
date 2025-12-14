@@ -668,3 +668,4 @@ export class IntegratedBitsKickCoinsGiveawayService {
     throw new BadRequestException(`Could not find winner for ticket index ${ticketIndex}`);
   }
 }
+

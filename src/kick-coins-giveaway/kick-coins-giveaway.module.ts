@@ -11,3 +11,4 @@ import { KickModule } from '../kick/kick.module';
   exports: [KickCoinsGiveawayService],
 })
 export class KickCoinsGiveawayModule {}
+

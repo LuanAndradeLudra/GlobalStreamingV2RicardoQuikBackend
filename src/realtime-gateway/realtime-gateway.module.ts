@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
+import { RealtimeGateway } from './realtime-gateway.gateway';
 
-// RealtimeGatewayModule will provide real-time websockets/events for giveaway updates.
-@Module({})
+@Module({
+  providers: [RealtimeGateway],
+  exports: [RealtimeGateway],
+})
 export class RealtimeGatewayModule {}

@@ -161,3 +161,4 @@ export class KickCoinsGiveawayController {
     return this.kickCoinsGiveawayService.draw(user.id, id);
   }
 }
+

@@ -229,4 +229,89 @@ export class TwitchService {
       throw new InternalServerErrorException('Failed to fetch broadcaster subscriptions');
     }
   }
+
+  /**
+   * Get user subscription status (check if user is subscribed to broadcaster)
+   * GET https://api.twitch.tv/helix/subscriptions/user?broadcaster_id=X&user_id=Y
+   * Requires: user:read:subscriptions scope from the BROADCASTER
+   * 
+   * Alternative: Use /subscriptions?broadcaster_id=X&user_id=Y (requires channel:read:subscriptions from broadcaster)
+   */
+  async getUserSubscription(
+    userId: string,
+    broadcasterId: string,
+    subscriberUserId: string,
+  ): Promise<any> {
+    try {
+      const { accessToken } = await this.getTwitchAccount(userId);
+
+      // Try using /subscriptions endpoint (requires channel:read:subscriptions from broadcaster)
+      const params: any = {
+        broadcaster_id: broadcasterId,
+        user_id: subscriberUserId,
+      };
+
+      console.log('🔍 [Twitch API] Checking subscription:', params);
+
+      const response = await this.axiosInstance.get(`${this.twitchApiUrl}/subscriptions`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Client-Id': this.clientId,
+        },
+        params,
+      });
+
+      console.log('✅ [Twitch API] Subscription response:', JSON.stringify(response.data, null, 2));
+
+      return response.data;
+    } catch (error: any) {
+      // 404 means user is not subscribed
+      if (error.response?.status === 404) {
+        console.log('ℹ️ [Twitch API] User is not subscribed (404)');
+        return null;
+      }
+      // 401 means missing scope - log warning but don't throw
+      if (error.response?.status === 401) {
+        console.warn('⚠️ Missing Twitch scope: channel:read:subscriptions. Cannot check subscriber status. Treating as non-subscriber.');
+        return null;
+      }
+      if (error.response) {
+        const errorText = JSON.stringify(error.response.data || error.response.statusText);
+        console.error('Twitch getUserSubscription error:', errorText);
+        // Don't throw - just return null if we can't check subscription
+        return null;
+      }
+      console.error('Error fetching user subscription:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get user info by user ID (for avatar, display name, etc)
+   * GET https://api.twitch.tv/helix/users?id=X
+   */
+  async getUserById(userId: string, targetUserId: string): Promise<any> {
+    try {
+      const accessToken = await this.getTwitchAccessToken(userId);
+
+      const response = await this.axiosInstance.get(`${this.twitchApiUrl}/users`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Client-Id': this.clientId,
+        },
+        params: {
+          id: targetUserId,
+        },
+      });
+
+      return response.data?.data?.[0] || null;
+    } catch (error: any) {
+      if (error.response) {
+        const errorText = JSON.stringify(error.response.data || error.response.statusText);
+        console.error('Twitch getUserById error:', errorText);
+      }
+      console.error('Error fetching user by ID:', error);
+      return null;
+    }
+  }
 }

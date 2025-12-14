@@ -11,3 +11,4 @@ export class CreateIntegratedBitsKickCoinsGiveawayDto {
   @IsEnum(IntegratedBitsKickCoinsCategory)
   category: IntegratedBitsKickCoinsCategory;
 }
+

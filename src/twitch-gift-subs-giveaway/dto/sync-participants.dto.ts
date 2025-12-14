@@ -63,3 +63,4 @@ export class SyncParticipantsDto {
   @IsNotEmpty()
   data: TwitchSubscriptionDto[];
 }
+

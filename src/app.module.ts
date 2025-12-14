@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
+import { RedisModule } from './redis/redis.module';
+import { StreamGiveawayRedisModule } from './stream-giveaway-redis/stream-giveaway-redis.module';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { ConnectedAccountsModule } from './connected-accounts/connected-accounts.module';
@@ -24,6 +26,8 @@ import { YouTubeChatModule } from './youtube-chat/youtube-chat.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    RedisModule,
+    StreamGiveawayRedisModule,
     AuthModule,
     UserModule,
     ConnectedAccountsModule,

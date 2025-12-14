@@ -70,7 +70,7 @@ export class TwitchOAuthService {
       client_id: this.clientId,
       redirect_uri: this.redirectUri,
       response_type: 'code',
-      scope: 'channel:read:subscriptions channel:read:redemptions channel:manage:redemptions user:read:email user:write:chat chat:read chat:edit bits:read user:read:chat user:bot channel:bot',
+      scope: 'channel:read:subscriptions user:read:subscriptions channel:read:redemptions channel:manage:redemptions user:read:email user:write:chat chat:read chat:edit bits:read user:read:chat user:bot channel:bot',
       state,
     });
 

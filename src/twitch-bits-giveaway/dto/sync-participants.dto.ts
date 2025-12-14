@@ -53,3 +53,4 @@ export class SyncParticipantsDto {
   @IsInt()
   total?: number;
 }
+

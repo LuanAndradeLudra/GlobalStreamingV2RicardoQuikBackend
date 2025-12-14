@@ -161,3 +161,4 @@ export class TwitchBitsGiveawayController {
     return this.twitchBitsGiveawayService.draw(user.id, id);
   }
 }
+

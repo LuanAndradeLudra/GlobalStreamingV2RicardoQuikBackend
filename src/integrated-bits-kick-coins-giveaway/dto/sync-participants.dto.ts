@@ -72,3 +72,4 @@ export class SyncIntegratedParticipantsDto {
     message: string;
   };
 }
+

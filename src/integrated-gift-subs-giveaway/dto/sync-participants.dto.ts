@@ -16,3 +16,4 @@ export class SyncIntegratedGiftSubsParticipantsDto {
   @IsObject()
   kickGiftSubsLeaderboard: any;
 }
+

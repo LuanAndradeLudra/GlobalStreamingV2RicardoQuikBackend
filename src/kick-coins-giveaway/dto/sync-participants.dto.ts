@@ -52,3 +52,4 @@ export class SyncParticipantsDto {
   @IsString()
   message?: string;
 }
+

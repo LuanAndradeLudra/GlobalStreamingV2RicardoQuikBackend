@@ -12,3 +12,4 @@ import { KickModule } from '../kick/kick.module';
   exports: [IntegratedGiftSubsGiveawayService],
 })
 export class IntegratedGiftSubsGiveawayModule {}
+

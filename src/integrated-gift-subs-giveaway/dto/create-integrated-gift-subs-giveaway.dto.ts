@@ -11,3 +11,4 @@ export class CreateIntegratedGiftSubsGiveawayDto {
   @IsEnum(IntegratedGiftSubsCategory)
   category: IntegratedGiftSubsCategory;
 }
+

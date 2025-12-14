@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma/prisma.service';
+import { StreamGiveawayRedisService } from '../stream-giveaway-redis/stream-giveaway-redis.service';
+import { RealtimeGateway } from '../realtime-gateway/realtime-gateway.gateway';
+import { GiveawayService } from '../giveaway/giveaway.service';
+import { TwitchService } from '../twitch/twitch.service';
+import { ConnectedPlatform, EntryMethod } from '@prisma/client';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -7,7 +13,14 @@ export class TwitchWebhooksService {
   private readonly logger = new Logger(TwitchWebhooksService.name);
   private readonly webhookSecret: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly redisService: StreamGiveawayRedisService,
+    private readonly realtimeGateway: RealtimeGateway,
+    private readonly giveawayService: GiveawayService,
+    private readonly twitchService: TwitchService,
+  ) {
     this.webhookSecret = this.configService.get<string>('TWITCH_WEBHOOK_SECRET') || '';
     
     if (!this.webhookSecret) {
@@ -90,21 +103,185 @@ export class TwitchWebhooksService {
     this.logger.log('📨 [Twitch Webhook] Chat message received');
     this.logger.log('📝 [Twitch Webhook] Message details:', JSON.stringify(event, null, 2));
     
-    // Log message content
-    if (event.message?.text) {
-      this.logger.log(`💬 [Twitch Webhook] Message: "${JSON.stringify(event.message)}"`);
-    }
-    
-    if (event.chatter_user_name) {
-      this.logger.log(`👤 [Twitch Webhook] From: ${event.chatter_user_name} (ID: ${event.chatter_user_id})`);
-    }
-    
-    if (event.broadcaster_user_id) {
-      this.logger.log(`📺 [Twitch Webhook] Channel ID: ${event.broadcaster_user_id}`);
-    }
+    try {
+      const messageText = event.message?.text || '';
+      const username = event.chatter_user_name;
+      const userId = event.chatter_user_id;
+      const broadcasterUserId = event.broadcaster_user_id;
 
-    // TODO: Process chat message for giveaway logic
-    // This is where you would integrate with your giveaway system
+      if (!messageText || !username || !userId || !broadcasterUserId) {
+        this.logger.warn('⚠️ Missing required fields in chat message event');
+        return;
+      }
+
+      this.logger.log(`💬 [Twitch] Message: "${messageText}"`);
+      this.logger.log(`👤 [Twitch] From: ${username} (ID: ${userId})`);
+      this.logger.log(`📺 [Twitch] Broadcaster ID: ${broadcasterUserId}`);
+
+      // Mapeia broadcasterUserId (Twitch) → userId (nosso sistema)
+      const connectedAccount = await this.prisma.connectedAccount.findUnique({
+        where: {
+          platform_externalChannelId: {
+            platform: ConnectedPlatform.TWITCH,
+            externalChannelId: broadcasterUserId,
+          },
+        },
+      });
+
+      if (!connectedAccount) {
+        this.logger.warn(`⚠️ No connected account found for Twitch broadcaster ID: ${broadcasterUserId}`);
+        return;
+      }
+
+      const adminUserId = connectedAccount.userId;
+      this.logger.log(`✅ Found admin userId: ${adminUserId} for broadcaster: ${broadcasterUserId}`);
+
+      // Busca sorteio ativo por palavra-chave na mensagem
+      const activeGiveaway = await this.redisService.findActiveGiveawayByKeyword(
+        adminUserId,
+        ConnectedPlatform.TWITCH,
+        messageText,
+      );
+
+      if (!activeGiveaway) {
+        this.logger.log('❌ No active giveaway found for this message');
+        return;
+      }
+
+      this.logger.log(`✅ Active giveaway found: ${activeGiveaway.streamGiveawayId}`);
+
+      // Incrementa métrica de mensagens processadas
+      await this.redisService.incrementMetric(
+        activeGiveaway.streamGiveawayId,
+        'total_messages_processed',
+      );
+
+      // Verifica dedupe - usuário já participou?
+      // Usa TWITCH_NON_SUB como padrão para check inicial (vamos verificar tier depois)
+      const isDuplicate = await this.redisService.checkDuplicate(
+        activeGiveaway.streamGiveawayId,
+        ConnectedPlatform.TWITCH,
+        userId,
+        EntryMethod.TWITCH_NON_SUB,
+      );
+
+      if (isDuplicate) {
+        this.logger.log(`⚠️ User ${username} already participated`);
+        return;
+      }
+
+      // ✅ AGORA SIM: Busca foto e tier (só se necessário)
+      this.logger.log(`🔍 Fetching user info and subscription for ${username}...`);
+
+      // Busca informações do usuário (foto, etc)
+      const userInfo = await this.twitchService.getUserById(adminUserId, userId);
+      const avatarUrl = userInfo?.profile_image_url || undefined;
+
+      this.logger.log(`👤 User info: ${userInfo?.display_name}, avatar: ${avatarUrl ? 'found' : 'not found'}`);
+
+      // Verifica se o usuário é subscriber e qual tier
+      const subscriptionData = await this.twitchService.getUserSubscription(
+        adminUserId,
+        broadcasterUserId,
+        userId,
+      );
+
+      let role = 'TWITCH_NON_SUB';
+      let method: EntryMethod = EntryMethod.TWITCH_NON_SUB;
+
+      if (subscriptionData?.data?.[0]) {
+        const tier = subscriptionData.data[0].tier;
+        this.logger.log(`✅ User is subscribed! Tier: ${tier}`);
+        
+        // Mapeia tier para role e method
+        switch (tier) {
+          case '1000':
+            role = 'TWITCH_TIER_1';
+            method = EntryMethod.TWITCH_TIER_1;
+            break;
+          case '2000':
+            role = 'TWITCH_TIER_2';
+            method = EntryMethod.TWITCH_TIER_2;
+            break;
+          case '3000':
+            role = 'TWITCH_TIER_3';
+            method = EntryMethod.TWITCH_TIER_3;
+            break;
+          default:
+            role = 'TWITCH_TIER_1'; // Fallback para Tier 1
+            method = EntryMethod.TWITCH_TIER_1;
+        }
+      } else {
+        this.logger.log(`ℹ️ User is not subscribed (NON_SUB)`);
+      }
+
+      // Calcula tickets baseado nas regras do sorteio
+      const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
+        streamGiveawayId: activeGiveaway.streamGiveawayId,
+        platform: ConnectedPlatform.TWITCH,
+        adminUserId: activeGiveaway.userId,
+        role: role, // Usa o role correto (TWITCH_TIER_1, TWITCH_NON_SUB, etc)
+      });
+
+      if (ticketInfo.totalTickets === 0) {
+        this.logger.log(`⚠️ User ${username} has 0 tickets (role not allowed or no rules configured)`);
+        return;
+      }
+
+      // Adiciona participante ao banco de dados
+      const participant = await this.giveawayService.addParticipant(
+        activeGiveaway.userId,
+        activeGiveaway.streamGiveawayId,
+        {
+          platform: ConnectedPlatform.TWITCH,
+          externalUserId: userId,
+          username: username,
+          avatarUrl: avatarUrl,
+          method: method, // Usa o method correto
+          tickets: ticketInfo.totalTickets,
+          metadata: {
+            messageText,
+            role,
+            tier: subscriptionData?.data?.[0]?.tier || null,
+            baseTickets: ticketInfo.baseTickets,
+            bitsTickets: ticketInfo.bitsTickets,
+            giftTickets: ticketInfo.giftTickets,
+          },
+        },
+      );
+
+      // Marca no Redis para dedupe
+      await this.redisService.markParticipant(
+        activeGiveaway.streamGiveawayId,
+        ConnectedPlatform.TWITCH,
+        userId,
+        method, // Usa o method correto
+      );
+
+      // Incrementa métrica de participantes
+      await this.redisService.incrementMetric(
+        activeGiveaway.streamGiveawayId,
+        'total_participants',
+      );
+
+      // Broadcast em tempo real
+      this.realtimeGateway.emitParticipantAdded({
+        streamGiveawayId: activeGiveaway.streamGiveawayId,
+        participant: {
+          id: participant.id,
+          username: participant.username,
+          platform: participant.platform,
+          method: participant.method,
+          tickets: participant.tickets,
+          avatarUrl: participant.avatarUrl || undefined,
+        },
+      });
+
+      this.logger.log(`🎉 Participant added: ${username} with ${ticketInfo.totalTickets} tickets`);
+    } catch (error) {
+      this.logger.error('❌ Error processing chat message:', error);
+      this.logger.error('❌ Error stack:', error instanceof Error ? error.stack : String(error));
+    }
   }
 
   /**

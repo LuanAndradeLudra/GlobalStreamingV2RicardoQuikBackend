@@ -86,3 +86,4 @@ export class IntegratedBitsKickCoinsGiveawayController {
     return this.integratedBitsKickCoinsGiveawayService.draw(userId, id);
   }
 }
+
