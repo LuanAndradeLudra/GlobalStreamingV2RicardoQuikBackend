@@ -156,21 +156,7 @@ export class TwitchWebhooksService {
         'total_messages_processed',
       );
 
-      // Verifica dedupe - usuário já participou?
-      // Usa TWITCH_NON_SUB como padrão para check inicial (vamos verificar tier depois)
-      const isDuplicate = await this.redisService.checkDuplicate(
-        activeGiveaway.streamGiveawayId,
-        ConnectedPlatform.TWITCH,
-        userId,
-        EntryMethod.TWITCH_NON_SUB,
-      );
-
-      if (isDuplicate) {
-        this.logger.log(`⚠️ User ${username} already participated`);
-        return;
-      }
-
-      // ✅ AGORA SIM: Busca foto e tier (só se necessário)
+      // ✅ AGORA SIM: Busca foto e tier (só para mensagens com keyword válida)
       this.logger.log(`🔍 Fetching user info and subscription for ${username}...`);
 
       // Busca informações do usuário (foto, etc)
@@ -215,72 +201,350 @@ export class TwitchWebhooksService {
         this.logger.log(`ℹ️ User is not subscribed (NON_SUB)`);
       }
 
-      // Calcula tickets baseado nas regras do sorteio
-      const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
-        streamGiveawayId: activeGiveaway.streamGiveawayId,
-        platform: ConnectedPlatform.TWITCH,
-        adminUserId: activeGiveaway.userId,
-        role: role, // Usa o role correto (TWITCH_TIER_1, TWITCH_NON_SUB, etc)
-      });
-
-      if (ticketInfo.totalTickets === 0) {
-        this.logger.log(`⚠️ User ${username} has 0 tickets (role not allowed or no rules configured)`);
-        return;
-      }
-
-      // Adiciona participante ao banco de dados
-      const participant = await this.giveawayService.addParticipant(
-        activeGiveaway.userId,
-        activeGiveaway.streamGiveawayId,
-        {
-          platform: ConnectedPlatform.TWITCH,
-          externalUserId: userId,
-          username: username,
-          avatarUrl: avatarUrl,
-          method: method, // Usa o method correto
-          tickets: ticketInfo.totalTickets,
-          metadata: {
-            messageText,
-            role,
-            tier: subscriptionData?.data?.[0]?.tier || null,
-            baseTickets: ticketInfo.baseTickets,
-            bitsTickets: ticketInfo.bitsTickets,
-            giftTickets: ticketInfo.giftTickets,
-          },
-        },
-      );
-
-      // Marca no Redis para dedupe
-      await this.redisService.markParticipant(
+      // Verifica dedupe - usuário já participou COM ESTE MÉTODO?
+      // Nota: Mesmo usuário pode ter múltiplas entradas (tier + bits + gift subs)
+      const isDuplicateTier = await this.redisService.checkDuplicate(
         activeGiveaway.streamGiveawayId,
         ConnectedPlatform.TWITCH,
         userId,
-        method, // Usa o method correto
+        method, // Verifica se já entrou com este tier específico
       );
 
-      // Incrementa métrica de participantes
-      await this.redisService.incrementMetric(
-        activeGiveaway.streamGiveawayId,
-        'total_participants',
+      if (isDuplicateTier) {
+        this.logger.log(`⚠️ User ${username} already participated with method ${method}`);
+        // Não retorna - ainda pode ter entradas de doações (bits/gift subs)
+      }
+
+      // ✅ Adiciona entrada por TIER (se não duplicado)
+      if (!isDuplicateTier) {
+        // Calcula tickets baseado nas regras do sorteio (tier)
+        const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
+          streamGiveawayId: activeGiveaway.streamGiveawayId,
+          platform: ConnectedPlatform.TWITCH,
+          adminUserId: activeGiveaway.userId,
+          role: role,
+        });
+
+        if (ticketInfo.totalTickets === 0) {
+          this.logger.log(`⚠️ User ${username} has 0 tickets for role ${role} (role not allowed or no rules configured)`);
+        } else {
+          // Adiciona participante ao banco de dados (entrada por tier)
+          const participantTier = await this.giveawayService.addParticipant(
+            activeGiveaway.userId,
+            activeGiveaway.streamGiveawayId,
+            {
+              platform: ConnectedPlatform.TWITCH,
+              externalUserId: userId,
+              username: username,
+              avatarUrl: avatarUrl,
+              method: method,
+              tickets: ticketInfo.totalTickets,
+              metadata: {
+                messageText,
+                role,
+                tier: subscriptionData?.data?.[0]?.tier || null,
+                baseTickets: ticketInfo.baseTickets,
+              },
+            },
+          );
+
+          // Marca no Redis para dedupe
+          await this.redisService.markParticipant(
+            activeGiveaway.streamGiveawayId,
+            ConnectedPlatform.TWITCH,
+            userId,
+            method,
+          );
+
+          // Incrementa métrica de participantes
+          await this.redisService.incrementMetric(
+            activeGiveaway.streamGiveawayId,
+            'total_participants',
+          );
+
+          // Broadcast em tempo real
+          this.realtimeGateway.emitParticipantAdded({
+            streamGiveawayId: activeGiveaway.streamGiveawayId,
+            participant: {
+              id: participantTier.id,
+              username: participantTier.username,
+              platform: participantTier.platform,
+              method: participantTier.method,
+              tickets: participantTier.tickets,
+              avatarUrl: participantTier.avatarUrl || undefined,
+            },
+          });
+
+          this.logger.log(`🎉 Participant added (tier): ${username} with ${ticketInfo.totalTickets} tickets (${role})`);
+        }
+      }
+
+      // ✅ Verifica e adiciona entrada por BITS (se configurado)
+      const bitsConfig = activeGiveaway.donationConfigs.find(
+        (config) => config.platform === ConnectedPlatform.TWITCH && config.unitType === 'BITS',
       );
 
-      // Broadcast em tempo real
-      this.realtimeGateway.emitParticipantAdded({
-        streamGiveawayId: activeGiveaway.streamGiveawayId,
-        participant: {
-          id: participant.id,
-          username: participant.username,
-          platform: participant.platform,
-          method: participant.method,
-          tickets: participant.tickets,
-          avatarUrl: participant.avatarUrl || undefined,
-        },
-      });
+      if (bitsConfig) {
+        this.logger.log(`🔍 Checking BITS donations for ${username}...`);
 
-      this.logger.log(`🎉 Participant added: ${username} with ${ticketInfo.totalTickets} tickets`);
+        // Verifica se já tem entrada de BITS
+        const isDuplicateBits = await this.redisService.checkDuplicate(
+          activeGiveaway.streamGiveawayId,
+          ConnectedPlatform.TWITCH,
+          userId,
+          EntryMethod.BITS,
+        );
+
+        if (!isDuplicateBits) {
+          // Busca quantidade de bits doados pelo usuário no período
+          const bitsAmount = await this.getBitsForUser(
+            activeGiveaway.userId,
+            broadcasterUserId,
+            userId,
+            bitsConfig.donationWindow,
+          );
+
+          if (bitsAmount > 0) {
+            this.logger.log(`✅ User donated ${bitsAmount} bits in ${bitsConfig.donationWindow} window`);
+
+            // Calcula tickets baseado nas regras de doação
+            const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
+              streamGiveawayId: activeGiveaway.streamGiveawayId,
+              platform: ConnectedPlatform.TWITCH,
+              adminUserId: activeGiveaway.userId,
+              role: role, // Usa o role base para buscar regras
+              totalBits: bitsAmount,
+            });
+
+            if (ticketInfo.bitsTickets > 0) {
+              // Adiciona participante ao banco de dados (entrada por BITS)
+              const participantBits = await this.giveawayService.addParticipant(
+                activeGiveaway.userId,
+                activeGiveaway.streamGiveawayId,
+                {
+                  platform: ConnectedPlatform.TWITCH,
+                  externalUserId: userId,
+                  username: username,
+                  avatarUrl: avatarUrl,
+                  method: EntryMethod.BITS,
+                  tickets: ticketInfo.bitsTickets,
+                  metadata: {
+                    bitsAmount,
+                    donationWindow: bitsConfig.donationWindow,
+                  },
+                },
+              );
+
+              // Marca no Redis para dedupe
+              await this.redisService.markParticipant(
+                activeGiveaway.streamGiveawayId,
+                ConnectedPlatform.TWITCH,
+                userId,
+                EntryMethod.BITS,
+              );
+
+              // Incrementa métrica
+              await this.redisService.incrementMetric(
+                activeGiveaway.streamGiveawayId,
+                'total_participants',
+              );
+
+              // Broadcast
+              this.realtimeGateway.emitParticipantAdded({
+                streamGiveawayId: activeGiveaway.streamGiveawayId,
+                participant: {
+                  id: participantBits.id,
+                  username: participantBits.username,
+                  platform: participantBits.platform,
+                  method: participantBits.method,
+                  tickets: participantBits.tickets,
+                  avatarUrl: participantBits.avatarUrl || undefined,
+                },
+              });
+
+              this.logger.log(`🎉 Participant added (bits): ${username} with ${ticketInfo.bitsTickets} tickets (${bitsAmount} bits)`);
+            }
+          } else {
+            this.logger.log(`ℹ️ User has no bits donations in ${bitsConfig.donationWindow} window`);
+          }
+        } else {
+          this.logger.log(`⚠️ User ${username} already has BITS entry`);
+        }
+      }
+
+      // ✅ Verifica e adiciona entrada por GIFT_SUB (se configurado)
+      const giftSubConfig = activeGiveaway.donationConfigs.find(
+        (config) => config.platform === ConnectedPlatform.TWITCH && config.unitType === 'GIFT_SUB',
+      );
+
+      if (giftSubConfig) {
+        this.logger.log(`🔍 Checking GIFT_SUB donations for ${username}...`);
+
+        // Verifica se já tem entrada de GIFT_SUB
+        const isDuplicateGiftSub = await this.redisService.checkDuplicate(
+          activeGiveaway.streamGiveawayId,
+          ConnectedPlatform.TWITCH,
+          userId,
+          EntryMethod.GIFT_SUB,
+        );
+
+        if (!isDuplicateGiftSub) {
+          // Busca quantidade de gift subs doados pelo usuário no período
+          const giftSubAmount = await this.getGiftSubsForUser(
+            activeGiveaway.userId,
+            broadcasterUserId,
+            userId,
+            giftSubConfig.donationWindow,
+          );
+
+          if (giftSubAmount > 0) {
+            this.logger.log(`✅ User gifted ${giftSubAmount} subs in ${giftSubConfig.donationWindow} window`);
+
+            // Calcula tickets baseado nas regras de doação
+            const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
+              streamGiveawayId: activeGiveaway.streamGiveawayId,
+              platform: ConnectedPlatform.TWITCH,
+              adminUserId: activeGiveaway.userId,
+              role: role,
+              totalGiftSubs: giftSubAmount,
+            });
+
+            this.logger.log(`📊 Gift sub ticket calculation: baseTickets=${ticketInfo.baseTickets}, bitsTickets=${ticketInfo.bitsTickets}, giftTickets=${ticketInfo.giftTickets}, total=${ticketInfo.totalTickets}`);
+
+            if (ticketInfo.giftTickets > 0) {
+              // Adiciona participante ao banco de dados (entrada por GIFT_SUB)
+              const participantGiftSub = await this.giveawayService.addParticipant(
+                activeGiveaway.userId,
+                activeGiveaway.streamGiveawayId,
+                {
+                  platform: ConnectedPlatform.TWITCH,
+                  externalUserId: userId,
+                  username: username,
+                  avatarUrl: avatarUrl,
+                  method: EntryMethod.GIFT_SUB,
+                  tickets: ticketInfo.giftTickets,
+                  metadata: {
+                    giftSubAmount,
+                    donationWindow: giftSubConfig.donationWindow,
+                  },
+                },
+              );
+
+              // Marca no Redis para dedupe
+              await this.redisService.markParticipant(
+                activeGiveaway.streamGiveawayId,
+                ConnectedPlatform.TWITCH,
+                userId,
+                EntryMethod.GIFT_SUB,
+              );
+
+              // Incrementa métrica
+              await this.redisService.incrementMetric(
+                activeGiveaway.streamGiveawayId,
+                'total_participants',
+              );
+
+              // Broadcast
+              this.realtimeGateway.emitParticipantAdded({
+                streamGiveawayId: activeGiveaway.streamGiveawayId,
+                participant: {
+                  id: participantGiftSub.id,
+                  username: participantGiftSub.username,
+                  platform: participantGiftSub.platform,
+                  method: participantGiftSub.method,
+                  tickets: participantGiftSub.tickets,
+                  avatarUrl: participantGiftSub.avatarUrl || undefined,
+                },
+              });
+
+              this.logger.log(`🎉 Participant added (gift subs): ${username} with ${ticketInfo.giftTickets} tickets (${giftSubAmount} subs)`);
+            }
+          } else {
+            this.logger.log(`ℹ️ User has no gift sub donations in ${giftSubConfig.donationWindow} window`);
+          }
+        } else {
+          this.logger.log(`⚠️ User ${username} already has GIFT_SUB entry`);
+        }
+      }
     } catch (error) {
       this.logger.error('❌ Error processing chat message:', error);
       this.logger.error('❌ Error stack:', error instanceof Error ? error.stack : String(error));
+    }
+  }
+
+  /**
+   * Busca quantidade de bits doados por um usuário em um período
+   */
+  private async getBitsForUser(
+    adminUserId: string,
+    broadcasterUserId: string,
+    userId: string,
+    donationWindow: string,
+  ): Promise<number> {
+    try {
+      // Calcula período baseado na donation window
+      const period = this.mapDonationWindowToPeriod(donationWindow);
+      
+      // Busca leaderboard de bits
+      const leaderboard = await this.twitchService.getBitsLeaderboard(adminUserId, period);
+      
+      // Encontra o usuário no leaderboard
+      const userEntry = leaderboard?.data?.find((entry: any) => entry.user_id === userId);
+      
+      return userEntry?.score || 0;
+    } catch (error) {
+      this.logger.error(`Error fetching bits for user ${userId}:`, error);
+      return 0;
+    }
+  }
+
+  /**
+   * Busca quantidade de gift subs doados por um usuário em um período
+   * Usa o endpoint /subscriptions com paginação e filtra por gifter_id
+   * 
+   * Nota: A API da Twitch não tem filtro de data, então retorna todas as gift subs ativas
+   */
+  private async getGiftSubsForUser(
+    adminUserId: string,
+    broadcasterUserId: string,
+    userId: string,
+    donationWindow: string,
+  ): Promise<number> {
+    try {
+      // Busca todas as gift subs ativas deste gifter
+      const giftSubCount = await this.twitchService.getGiftedSubsByGifter(
+        adminUserId,
+        broadcasterUserId,
+        userId,
+      );
+
+      // Nota: A API retorna apenas subs ATIVAS (não canceladas)
+      // Para filtrar por período, seria necessário:
+      // 1. Armazenar eventos em tempo real via EventSub
+      // 2. Ou fazer snapshot periódico e comparar deltas
+      
+      this.logger.log(`📊 Found ${giftSubCount} active gifted subs from user ${userId}`);
+      
+      return giftSubCount;
+    } catch (error) {
+      this.logger.error(`Error fetching gift subs for user ${userId}:`, error);
+      return 0;
+    }
+  }
+
+  /**
+   * Mapeia donation window para período da API da Twitch
+   */
+  private mapDonationWindowToPeriod(donationWindow: string): 'day' | 'week' | 'month' | 'all' {
+    switch (donationWindow) {
+      case 'DAILY':
+        return 'day';
+      case 'WEEKLY':
+        return 'week';
+      case 'MONTHLY':
+        return 'month';
+      default:
+        return 'all';
     }
   }
 

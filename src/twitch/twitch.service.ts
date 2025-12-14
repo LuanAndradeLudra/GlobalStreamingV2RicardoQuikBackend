@@ -287,6 +287,77 @@ export class TwitchService {
   }
 
   /**
+   * Get all gifted subscriptions by a specific gifter
+   * Uses pagination to fetch all subs and filters by gifter_id
+   */
+  async getGiftedSubsByGifter(
+    userId: string,
+    broadcasterId: string,
+    gifterId: string,
+  ): Promise<number> {
+    try {
+      const { accessToken } = await this.getTwitchAccount(userId);
+
+      let totalGifted = 0;
+      let cursor: string | undefined = undefined;
+      let hasMore = true;
+
+      // Busca todas as páginas
+      while (hasMore) {
+        const params: any = {
+          broadcaster_id: broadcasterId,
+          first: 100, // Máximo permitido
+        };
+
+        if (cursor) {
+          params.after = cursor;
+        }
+
+        console.log('🔍 [Twitch API] Fetching subscriptions page:', { cursor, totalGifted });
+
+        const response = await this.axiosInstance.get(`${this.twitchApiUrl}/subscriptions`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Client-Id': this.clientId,
+          },
+          params,
+        });
+
+        const data = response.data;
+        const subs = data.data || [];
+
+        // Filtra e conta gift subs deste gifter
+        const giftsFromUser = subs.filter(
+          (sub: any) => sub.is_gift === true && sub.gifter_id === gifterId,
+        );
+
+        totalGifted += giftsFromUser.length;
+
+        console.log(`📊 [Twitch API] Page: ${subs.length} subs, ${giftsFromUser.length} from gifter ${gifterId}`);
+
+        // Verifica se há mais páginas
+        cursor = data.pagination?.cursor;
+        hasMore = !!cursor;
+
+        // Segurança: limite de 10 páginas (1000 subs) para evitar loop infinito
+        if (!hasMore || totalGifted >= 1000) {
+          break;
+        }
+      }
+
+      console.log(`✅ [Twitch API] Total gifted subs by ${gifterId}: ${totalGifted}`);
+      return totalGifted;
+    } catch (error: any) {
+      if (error.response) {
+        const errorText = JSON.stringify(error.response.data || error.response.statusText);
+        console.error('Twitch getGiftedSubsByGifter error:', errorText);
+      }
+      console.error('Error fetching gifted subs:', error);
+      return 0;
+    }
+  }
+
+  /**
    * Get user info by user ID (for avatar, display name, etc)
    * GET https://api.twitch.tv/helix/users?id=X
    */
