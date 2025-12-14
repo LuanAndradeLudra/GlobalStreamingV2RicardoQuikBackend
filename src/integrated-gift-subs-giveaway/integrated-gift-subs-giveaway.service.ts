@@ -4,8 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { ConnectedPlatform } from '@prisma/client';
 import { CreateIntegratedGiftSubsGiveawayDto } from './dto/create-integrated-gift-subs-giveaway.dto';
 import { UpdateIntegratedGiftSubsGiveawayDto } from './dto/update-integrated-gift-subs-giveaway.dto';
-import { TwitchGiftSubsGiveawayService } from '../twitch-gift-subs-giveaway/twitch-gift-subs-giveaway.service';
-import { KickGiftSubsGiveawayService } from '../kick-gift-subs-giveaway/kick-gift-subs-giveaway.service';
+import { TwitchService } from '../twitch/twitch.service';
+import { KickService } from '../kick/kick.service';
 import * as crypto from 'crypto';
 
 interface TwitchGiftSubsLeaderboardResponse {
@@ -39,8 +39,8 @@ export class IntegratedGiftSubsGiveawayService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-    private readonly twitchGiftSubsService: TwitchGiftSubsGiveawayService,
-    private readonly kickGiftSubsService: KickGiftSubsGiveawayService,
+    private readonly twitchService: TwitchService,
+    private readonly kickService: KickService,
   ) {}
 
   /**
@@ -283,7 +283,97 @@ export class IntegratedGiftSubsGiveawayService {
       })),
     });
 
+    // Fetch created participants to enrich with avatars
+    const createdParticipants = await (this.prisma as any).integratedGiftSubsGiveawayParticipant.findMany({
+      where: { integratedGiftSubsGiveawayId: giveawayId },
+    });
+
+    // Separate participants by platform
+    const twitchParticipantsToEnrich = createdParticipants.filter(
+      (p: any) => p.platform === ConnectedPlatform.TWITCH
+    );
+    const kickParticipantsToEnrich = createdParticipants.filter(
+      (p: any) => p.platform === ConnectedPlatform.KICK
+    );
+
+    // Enrich Twitch participants with avatars
+    if (twitchParticipantsToEnrich.length > 0) {
+      await this.enrichTwitchParticipants(userId, twitchParticipantsToEnrich);
+    }
+
+    // Enrich Kick participants with avatars
+    if (kickParticipantsToEnrich.length > 0) {
+      await this.enrichKickParticipants(userId, kickParticipantsToEnrich);
+    }
+
     return this.findOne(userId, giveawayId);
+  }
+
+  /**
+   * Enrich Twitch participants with avatar URLs
+   */
+  private async enrichTwitchParticipants(userId: string, participants: any[]) {
+    if (participants.length === 0) return;
+
+    try {
+      const userIds = participants.map((p) => p.externalUserId);
+      const usersResponse = await this.twitchService.getUsers(userId, userIds);
+
+      if (!usersResponse?.data) return;
+
+      const usersMap = new Map(usersResponse.data.map((u: any) => [u.id, u]));
+
+      // Update each participant with avatar
+      for (const participant of participants) {
+        const userData = usersMap.get(participant.externalUserId) as any;
+        if (userData?.profile_image_url) {
+          try {
+            await (this.prisma as any).integratedGiftSubsGiveawayParticipant.update({
+              where: { id: participant.id },
+              data: { avatarUrl: userData.profile_image_url },
+            });
+          } catch (error) {
+            console.warn(`Failed to update avatar for Twitch participant ${participant.id}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to enrich Twitch participants:', error);
+    }
+  }
+
+  /**
+   * Enrich Kick participants with avatar URLs
+   */
+  private async enrichKickParticipants(userId: string, participants: any[]) {
+    if (participants.length === 0) return;
+
+    try {
+      const userIds = participants.map((p) => parseInt(p.externalUserId, 10)).filter((id) => !isNaN(id));
+      const usersResponse = await this.kickService.getUsers(userId, userIds);
+
+      if (!usersResponse?.data) return;
+
+      const usersMap = new Map(usersResponse.data.map((u: any) => [u.user_id, u]));
+
+      // Update each participant with avatar
+      for (const participant of participants) {
+        const kickUserId = parseInt(participant.externalUserId, 10);
+        const userData = usersMap.get(kickUserId) as any;
+        if (userData?.profile_picture) {
+          try {
+            await (this.prisma as any).integratedGiftSubsGiveawayParticipant.update({
+              where: { id: participant.id },
+              data: { avatarUrl: userData.profile_picture },
+            });
+          } catch (error) {
+            console.warn(`Failed to update avatar for Kick participant ${participant.id}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to enrich Kick participants:', error);
+    }
   }
 
   /**
