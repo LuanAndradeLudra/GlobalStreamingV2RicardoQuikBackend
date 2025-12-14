@@ -166,11 +166,18 @@ export class TwitchWebhooksService {
       this.logger.log(`👤 User info: ${userInfo?.display_name}, avatar: ${avatarUrl ? 'found' : 'not found'}`);
 
       // Verifica se o usuário é subscriber e qual tier
-      const subscriptionData = await this.twitchService.getUserSubscription(
-        adminUserId,
-        broadcasterUserId,
-        userId,
-      );
+      let subscriptionData: any = null;
+      try {
+        subscriptionData = await this.twitchService.getUserSubscription(
+          adminUserId,
+          broadcasterUserId,
+          userId,
+        );
+        this.logger.log(`✅ Subscription check completed`);
+      } catch (error) {
+        this.logger.error(`❌ Error checking subscription:`, error);
+        // Continua como NON_SUB
+      }
 
       let role = 'TWITCH_NON_SUB';
       let method: EntryMethod = EntryMethod.TWITCH_NON_SUB;
@@ -284,6 +291,8 @@ export class TwitchWebhooksService {
         (config) => config.platform === ConnectedPlatform.TWITCH && config.unitType === 'BITS',
       );
 
+      this.logger.log(`🔍 Donation configs check - BITS: ${bitsConfig ? 'ENABLED' : 'DISABLED'}`);
+
       if (bitsConfig) {
         this.logger.log(`🔍 Checking BITS donations for ${username}...`);
 
@@ -376,6 +385,8 @@ export class TwitchWebhooksService {
       const giftSubConfig = activeGiveaway.donationConfigs.find(
         (config) => config.platform === ConnectedPlatform.TWITCH && config.unitType === 'GIFT_SUB',
       );
+
+      this.logger.log(`🔍 Donation configs check - GIFT_SUB: ${giftSubConfig ? 'ENABLED' : 'DISABLED'}`);
 
       if (giftSubConfig) {
         this.logger.log(`🔍 Checking GIFT_SUB donations for ${username}...`);
