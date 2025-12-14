@@ -32,9 +32,9 @@ export class TwitchService {
   }
 
   /**
-   * Get Twitch account access token for user
+   * Get Twitch account data (access token and channel ID) for user
    */
-  private async getTwitchAccessToken(userId: string): Promise<string> {
+  private async getTwitchAccount(userId: string): Promise<{ accessToken: string; externalChannelId: string }> {
     const accounts = await this.connectedAccountsService.findAll(userId);
     const twitchAccount = accounts.find((acc) => acc.platform === 'TWITCH');
 
@@ -42,7 +42,18 @@ export class TwitchService {
       throw new BadRequestException('No Twitch account connected');
     }
 
-    return twitchAccount.accessToken;
+    return {
+      accessToken: twitchAccount.accessToken,
+      externalChannelId: twitchAccount.externalChannelId,
+    };
+  }
+
+  /**
+   * Get Twitch account access token for user
+   */
+  private async getTwitchAccessToken(userId: string): Promise<string> {
+    const { accessToken } = await this.getTwitchAccount(userId);
+    return accessToken;
   }
 
   /**
@@ -183,10 +194,13 @@ export class TwitchService {
     after?: string,
   ): Promise<any> {
     try {
-      const accessToken = await this.getTwitchAccessToken(userId);
+      const { accessToken, externalChannelId } = await this.getTwitchAccount(userId);
+
+      // If broadcaster_id is 'self', use the connected account's channel ID
+      const resolvedBroadcasterId = broadcasterId === 'self' ? externalChannelId : broadcasterId;
 
       const params: any = {
-        broadcaster_id: broadcasterId,
+        broadcaster_id: resolvedBroadcasterId,
         first: 100, // Maximum allowed
       };
 

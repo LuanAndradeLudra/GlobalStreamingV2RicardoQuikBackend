@@ -82,6 +82,10 @@ enum IntegratedBitsKickCoinsCategory {
   MONTHLY
 }
 
+enum IntegratedGiftSubsCategory {
+  ACTIVE
+}
+
 model User {
   id                        String                     @id @default(uuid())
   email                     String                     @unique
@@ -101,6 +105,7 @@ model User {
   twitchBitsGiveaways             TwitchBitsGiveaway[]
   twitchGiftSubsGiveaways         TwitchGiftSubsGiveaway[]
   integratedBitsKickCoinsGiveaways IntegratedBitsKickCoinsGiveaway[]
+  integratedGiftSubsGiveaways     IntegratedGiftSubsGiveaway[]
 
   @@unique([provider, providerId])
 }
@@ -568,4 +573,64 @@ model IntegratedBitsKickCoinsGiveawayWinner {
   @@index([integratedBitsKickCoinsGiveawayId], map: "integrated_bits_kick_winner_giveaway_id_idx")
   @@index([integratedBitsKickCoinsGiveawayId, status], map: "integrated_bits_kick_winner_giveaway_id_status_idx")
   @@index([winnerParticipantId], map: "integrated_bits_kick_winner_participant_id_idx")
+}
+
+// Integrated Gift Subs Giveaways - sorteios integrados de Twitch Gift Subs e Kick Gift Subs
+model IntegratedGiftSubsGiveaway {
+  id        String                        @id @default(uuid())
+  userId    String
+  name      String
+  category  IntegratedGiftSubsCategory    // ACTIVE
+  createdAt DateTime                      @default(now())
+  updatedAt DateTime                      @updatedAt
+
+  user         User                                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  participants IntegratedGiftSubsGiveawayParticipant[]
+  winners      IntegratedGiftSubsGiveawayWinner[]
+
+  @@index([userId])
+}
+
+model IntegratedGiftSubsGiveawayParticipant {
+  id                           String            @id @default(uuid())
+  integratedGiftSubsGiveawayId String
+  platform                     ConnectedPlatform // TWITCH ou KICK
+  externalUserId               String            // gifter_id (Twitch) ou user_id (Kick)
+  username                     String
+  avatarUrl                    String?           // URL da foto/avatar do participante
+  quantity                     Int               // Quantidade de gift subs
+  tickets                      Int               // Quantidade de tickets calculados
+  createdAt                    DateTime          @default(now())
+  updatedAt                    DateTime          @updatedAt
+
+  integratedGiftSubsGiveaway IntegratedGiftSubsGiveaway         @relation(fields: [integratedGiftSubsGiveawayId], references: [id], onDelete: Cascade)
+  winnerIn                   IntegratedGiftSubsGiveawayWinner[] @relation("IntegratedGiftSubsWinnerParticipant")
+
+  @@index([integratedGiftSubsGiveawayId], map: "integrated_gift_subs_participant_giveaway_id_idx")
+  @@index([integratedGiftSubsGiveawayId, platform, externalUserId], map: "integrated_gift_subs_participant_platform_user_idx")
+}
+
+model IntegratedGiftSubsGiveawayWinner {
+  id                            String       @id @default(uuid())
+  integratedGiftSubsGiveawayId  String
+  winnerParticipantId           String       // ID do participante vencedor
+  status                        WinnerStatus // WINNER ou REPICK
+  participantRanges             Json         // Array de ranges: [{id, display, start, end}]
+  totalTickets                  Int          // Total de tickets no sorteio
+  listHashAlgo                  String       // SHA256 ou MD5
+  listHash                      String       // Hash da lista de participantes
+  randomOrgRandom               Json         // Payload completo do Random.org (result.random)
+  randomOrgSignature            String       // Assinatura do Random.org
+  randomOrgVerificationUrl      String       // URL para verificar a assinatura
+  drawnNumber                   Int          // Número sorteado
+  verified                      Boolean      // Se a assinatura foi verificada
+  createdAt                     DateTime     @default(now())
+  updatedAt                     DateTime     @updatedAt
+
+  integratedGiftSubsGiveaway IntegratedGiftSubsGiveaway            @relation(fields: [integratedGiftSubsGiveawayId], references: [id], onDelete: Cascade)
+  winnerParticipant          IntegratedGiftSubsGiveawayParticipant @relation("IntegratedGiftSubsWinnerParticipant", fields: [winnerParticipantId], references: [id], onDelete: Cascade)
+
+  @@index([integratedGiftSubsGiveawayId], map: "integrated_gift_subs_winner_giveaway_id_idx")
+  @@index([integratedGiftSubsGiveawayId, status], map: "integrated_gift_subs_winner_giveaway_id_status_idx")
+  @@index([winnerParticipantId], map: "integrated_gift_subs_winner_participant_id_idx")
 }

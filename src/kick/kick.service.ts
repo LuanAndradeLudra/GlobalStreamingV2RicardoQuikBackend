@@ -29,9 +29,9 @@ export class KickService {
   }
 
   /**
-   * Get Kick account access token for user
+   * Get Kick account data (access token and channel slug/name) for user
    */
-  private async getKickAccessToken(userId: string): Promise<string> {
+  private async getKickAccount(userId: string): Promise<{ accessToken: string; channelName: string }> {
     const accounts = await this.connectedAccountsService.findAll(userId);
     const kickAccount = accounts.find((acc) => acc.platform === 'KICK');
 
@@ -39,7 +39,19 @@ export class KickService {
       throw new BadRequestException('No Kick account connected');
     }
 
-    return kickAccount.accessToken;
+    // externalChannelId for Kick is actually the channel slug/username
+    return {
+      accessToken: kickAccount.accessToken,
+      channelName: kickAccount.externalChannelId,
+    };
+  }
+
+  /**
+   * Get Kick account access token for user
+   */
+  private async getKickAccessToken(userId: string): Promise<string> {
+    const { accessToken } = await this.getKickAccount(userId);
+    return accessToken;
   }
 
   /**
@@ -128,17 +140,22 @@ export class KickService {
     browserHeaders: Record<string, string>,
   ): Promise<any> {
     try {
+      const { accessToken, channelName: connectedChannelName } = await this.getKickAccount(userId);
+      
+      // If channelName is 'self', use the connected account's channel name
+      const resolvedChannelName = channelName === 'self' ? connectedChannelName : channelName;
+
       const headers: Record<string, string> = {
-        Authorization: `Bearer ${await this.getKickAccessToken(userId)}`,
+        Authorization: `Bearer ${accessToken}`,
         Accept: 'application/json, text/plain, */*',
         Origin: 'https://kick.com',
-        Referer: `https://kick.com/${channelName}`,
+        Referer: `https://kick.com/${resolvedChannelName}`,
         'User-Agent': browserHeaders['user-agent'],
         'Accept-Language': browserHeaders['accept-language'],
       };
 
       const response = await this.axiosInstance.get(
-        `${this.kickApiV2Url}/channels/${channelName}/leaderboards`,
+        `${this.kickApiV2Url}/channels/${resolvedChannelName}/leaderboards`,
         {
           headers: headers,
         },
