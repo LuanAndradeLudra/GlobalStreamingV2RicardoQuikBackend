@@ -80,3 +80,4 @@ ALTER TABLE "IntegratedGiftSubsGiveawayWinner" ADD CONSTRAINT "IntegratedGiftSub
 -- AddForeignKey
 ALTER TABLE "IntegratedGiftSubsGiveawayWinner" ADD CONSTRAINT "IntegratedGiftSubsGiveawayWinner_winnerParticipantId_fkey" FOREIGN KEY ("winnerParticipantId") REFERENCES "IntegratedGiftSubsGiveawayParticipant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+

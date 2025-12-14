@@ -82,3 +82,4 @@ ALTER TABLE "TwitchGiftSubsGiveawayWinner" ADD CONSTRAINT "TwitchGiftSubsGiveawa
 -- AddForeignKey
 ALTER TABLE "TwitchGiftSubsGiveawayWinner" ADD CONSTRAINT "TwitchGiftSubsGiveawayWinner_winnerParticipantId_fkey" FOREIGN KEY ("winnerParticipantId") REFERENCES "TwitchGiftSubsGiveawayParticipant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+

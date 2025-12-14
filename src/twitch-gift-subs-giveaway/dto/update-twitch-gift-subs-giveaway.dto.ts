@@ -3,3 +3,4 @@ import { CreateTwitchGiftSubsGiveawayDto } from './create-twitch-gift-subs-givea
 
 export class UpdateTwitchGiftSubsGiveawayDto extends PartialType(CreateTwitchGiftSubsGiveawayDto) {}
 
+

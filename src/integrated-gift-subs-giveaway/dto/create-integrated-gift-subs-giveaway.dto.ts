@@ -12,3 +12,4 @@ export class CreateIntegratedGiftSubsGiveawayDto {
   category: IntegratedGiftSubsCategory;
 }
 
+

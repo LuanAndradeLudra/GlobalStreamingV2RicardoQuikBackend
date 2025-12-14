@@ -12,3 +12,4 @@ export class CreateKickCoinsGiveawayDto {
   category: KickCoinsCategory;
 }
 
+

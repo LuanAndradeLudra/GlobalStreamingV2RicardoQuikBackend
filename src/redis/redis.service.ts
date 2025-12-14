@@ -156,3 +156,4 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return this.client.keys(pattern);
   }
 }
+

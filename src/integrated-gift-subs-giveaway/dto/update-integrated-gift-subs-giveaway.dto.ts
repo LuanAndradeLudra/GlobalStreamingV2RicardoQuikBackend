@@ -3,3 +3,4 @@ import { CreateIntegratedGiftSubsGiveawayDto } from './create-integrated-gift-su
 
 export class UpdateIntegratedGiftSubsGiveawayDto extends PartialType(CreateIntegratedGiftSubsGiveawayDto) {}
 
+

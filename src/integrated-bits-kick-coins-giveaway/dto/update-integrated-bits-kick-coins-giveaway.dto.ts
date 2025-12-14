@@ -5,3 +5,4 @@ export class UpdateIntegratedBitsKickCoinsGiveawayDto extends PartialType(
   CreateIntegratedBitsKickCoinsGiveawayDto,
 ) {}
 
+

@@ -190,3 +190,4 @@ Toda a lógica está implementada e funcional. Basta:
 4. Testar o fluxo!
 
 Qualquer dúvida, consulte o `README_STREAM_GIVEAWAY.md` para detalhes técnicos completos.
+
