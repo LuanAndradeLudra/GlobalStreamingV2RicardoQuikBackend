@@ -117,7 +117,6 @@ export class TwitchService {
         params.started_at = finalStartedAt;
       }
 
-      console.log('Fetching bits leaderboard with params:', params);
 
       const response = await this.axiosInstance.get(`${this.twitchApiUrl}/bits/leaderboard`, {
         headers: {
@@ -251,8 +250,6 @@ export class TwitchService {
         user_id: subscriberUserId,
       };
 
-      console.log('🔍 [Twitch API] Checking subscription:', params);
-
       const response = await this.axiosInstance.get(`${this.twitchApiUrl}/subscriptions`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -260,8 +257,6 @@ export class TwitchService {
         },
         params,
       });
-
-      console.log('✅ [Twitch API] Subscription response:', JSON.stringify(response.data, null, 2));
 
       return response.data;
     } catch (error: any) {
@@ -330,8 +325,6 @@ export class TwitchService {
         );
 
         totalGifted += giftsFromUser.length;
-
-        console.log(`📊 [Twitch API] Page: ${subs.length} subs, ${giftsFromUser.length} from gifter ${gifterId}`);
 
         // Verifica se há mais páginas
         cursor = data.pagination?.cursor;
