@@ -33,4 +33,11 @@ export class UserService {
   }): Promise<User> {
     return this.prisma.user.create({ data });
   }
+
+  findAllAdmins(): Promise<User[]> {
+    return this.prisma.user.findMany({
+      where: { role: UserRole.ADMIN },
+      include: { accounts: true },
+    });
+  }
 }

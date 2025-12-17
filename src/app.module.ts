@@ -21,6 +21,7 @@ import { KickModule } from './kick/kick.module';
 import { TwitchModule } from './twitch/twitch.module';
 import { TwitchWebhooksModule } from './twitch-webhooks/twitch-webhooks.module';
 import { YouTubeChatModule } from './youtube-chat/youtube-chat.module';
+import { TokenRefreshCronModule } from './token-refresh-cron/token-refresh-cron.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { YouTubeChatModule } from './youtube-chat/youtube-chat.module';
     TwitchModule,
     TwitchWebhooksModule,
     YouTubeChatModule,
+    TokenRefreshCronModule,
   ],
 })
 export class AppModule {}
