@@ -348,6 +348,17 @@ twIDAQAB
       );
 
       this.logger.log(`🔍 Donation configs check - GIFT_SUB: ${giftSubConfig ? 'ENABLED' : 'DISABLED'}`);
+      
+      if (giftSubConfig) {
+        this.logger.log(`📋 [DEBUG] Gift Sub Config encontrada:`, {
+          platform: giftSubConfig.platform,
+          unitType: giftSubConfig.unitType,
+          donationWindow: giftSubConfig.donationWindow,
+          configCompleta: JSON.stringify(giftSubConfig),
+        });
+        this.logger.log(`📋 [DEBUG] Stream Giveaway ID: ${activeGiveaway.streamGiveawayId}`);
+        this.logger.log(`📋 [DEBUG] Todas as donationConfigs do sorteio:`, JSON.stringify(activeGiveaway.donationConfigs, null, 2));
+      }
 
       if (giftSubConfig) {
         const isGiftSubDuplicate = await this.redisService.checkDuplicate(
@@ -358,6 +369,7 @@ twIDAQAB
         );
 
         if (!isGiftSubDuplicate) {
+          this.logger.log(`🔍 [DEBUG] Buscando gift subs com donationWindow: ${giftSubConfig.donationWindow}`);
           const giftSubs = await this.getGiftSubsForUser(
             adminUserId,
             parseInt(userId),
@@ -514,6 +526,14 @@ twIDAQAB
     window: DonationWindow,
   ): Promise<number> {
     try {
+      this.logger.log(`🔍 [DEBUG] getGiftSubsForUser chamado com parâmetros:`, {
+        adminUserId,
+        kickUserId,
+        username,
+        window,
+        windowType: typeof window,
+      });
+
       // Get connected account to get channel name
       const connectedAccount = await this.prisma.connectedAccount.findFirst({
         where: {
@@ -542,53 +562,116 @@ twIDAQAB
         },
       );
 
-      this.logger.log(`📊 [Kick] Gift subs raw response:`, JSON.stringify(leaderboard).substring(0, 300));
+      this.logger.log(`📊 [DEBUG] Gift subs raw response completo:`, JSON.stringify(leaderboard, null, 2));
+      this.logger.log(`📊 [DEBUG] Estrutura da resposta:`, {
+        hasData: !!leaderboard?.data,
+        hasGifts: !!leaderboard?.gifts,
+        hasGiftsMonth: !!leaderboard?.gifts_month,
+        hasGiftsWeek: !!leaderboard?.gifts_week,
+        dataKeys: leaderboard?.data ? Object.keys(leaderboard.data) : [],
+        dataMonthLength: leaderboard?.data?.month?.length || 0,
+        dataWeekLength: leaderboard?.data?.week?.length || 0,
+        dataLifetimeLength: leaderboard?.data?.lifetime?.length || 0,
+        giftsLength: leaderboard?.gifts?.length || 0,
+        giftsMonthLength: leaderboard?.gifts_month?.length || 0,
+        giftsWeekLength: leaderboard?.gifts_week?.length || 0,
+      });
 
       // Check if response has time windows (data.month/week) or direct gifts array
       let giftsArray: any[];
       
-      if (leaderboard.data) {
+      if (leaderboard?.data) {
         // New format with time windows: {data: {lifetime, month, week}}
+        this.logger.log(`📊 [DEBUG] Usando formato novo com data. Window solicitado: ${window}`);
+        
         switch (window) {
           case 'MONTHLY':
             giftsArray = leaderboard.data.month || [];
+            this.logger.log(`📊 [DEBUG] Selecionado MONTHLY - Array tem ${giftsArray.length} entradas`);
+            if (giftsArray.length > 0) {
+              this.logger.log(`📊 [DEBUG] Primeiras 3 entradas do MONTHLY:`, JSON.stringify(giftsArray.slice(0, 3), null, 2));
+            }
             break;
           case 'WEEKLY':
             giftsArray = leaderboard.data.week || [];
+            this.logger.log(`📊 [DEBUG] Selecionado WEEKLY - Array tem ${giftsArray.length} entradas`);
+            if (giftsArray.length > 0) {
+              this.logger.log(`📊 [DEBUG] Primeiras 3 entradas do WEEKLY:`, JSON.stringify(giftsArray.slice(0, 3), null, 2));
+            }
             break;
           case 'DAILY':
             // Kick doesn't have daily, use week as fallback
             giftsArray = leaderboard.data.week || [];
+            this.logger.log(`📊 [DEBUG] Selecionado DAILY (fallback para WEEKLY) - Array tem ${giftsArray.length} entradas`);
             break;
           default:
             giftsArray = leaderboard.data.month || [];
+            this.logger.log(`📊 [DEBUG] Window desconhecido (${window}), usando MONTHLY como padrão - Array tem ${giftsArray.length} entradas`);
         }
         this.logger.log(`📊 [Kick] Using ${window} gift subs window with ${giftsArray.length} entries`);
-      } else if (leaderboard.gifts) {
-        // Old format: {gifts: [...]}
+      } else if (leaderboard?.gifts_month || leaderboard?.gifts_week) {
+        // Format with gifts_month and gifts_week at root level: {gifts_month: [...], gifts_week: [...], gifts: [...]}
+        this.logger.log(`📊 [DEBUG] Usando formato com gifts_month/gifts_week no root. Window solicitado: ${window}`);
+        
+        switch (window) {
+          case 'MONTHLY':
+            giftsArray = leaderboard.gifts_month || [];
+            this.logger.log(`📊 [DEBUG] Selecionado MONTHLY (gifts_month) - Array tem ${giftsArray.length} entradas`);
+            if (giftsArray.length > 0) {
+              this.logger.log(`📊 [DEBUG] Primeiras 3 entradas do MONTHLY:`, JSON.stringify(giftsArray.slice(0, 3), null, 2));
+            }
+            break;
+          case 'WEEKLY':
+            giftsArray = leaderboard.gifts_week || [];
+            this.logger.log(`📊 [DEBUG] Selecionado WEEKLY (gifts_week) - Array tem ${giftsArray.length} entradas`);
+            if (giftsArray.length > 0) {
+              this.logger.log(`📊 [DEBUG] Primeiras 3 entradas do WEEKLY:`, JSON.stringify(giftsArray.slice(0, 3), null, 2));
+            }
+            break;
+          case 'DAILY':
+            // Kick doesn't have daily, use week as fallback
+            giftsArray = leaderboard.gifts_week || [];
+            this.logger.log(`📊 [DEBUG] Selecionado DAILY (fallback para WEEKLY/gifts_week) - Array tem ${giftsArray.length} entradas`);
+            break;
+          default:
+            giftsArray = leaderboard.gifts_month || [];
+            this.logger.log(`📊 [DEBUG] Window desconhecido (${window}), usando MONTHLY (gifts_month) como padrão - Array tem ${giftsArray.length} entradas`);
+        }
+        this.logger.log(`📊 [Kick] Using ${window} gift subs window with ${giftsArray.length} entries`);
+      } else if (leaderboard?.gifts) {
+        // Old format: {gifts: [...]} - This is LIFETIME, should only be used as fallback
+        this.logger.warn(`⚠️ [DEBUG] Usando formato antigo (gifts direto - LIFETIME). Window solicitado foi ${window}, mas usando lifetime como fallback`);
         giftsArray = leaderboard.gifts;
-        this.logger.log(`📊 [Kick] Using direct gifts array with ${giftsArray.length} entries`);
+        this.logger.log(`📊 [DEBUG] Array tem ${giftsArray.length} entradas (LIFETIME)`);
+        this.logger.log(`📊 [Kick] Using direct gifts array (LIFETIME) with ${giftsArray.length} entries`);
       } else {
         this.logger.warn('⚠️ [Kick] Invalid gift subs leaderboard response - unknown format');
+        this.logger.warn(`⚠️ [DEBUG] Leaderboard completo:`, JSON.stringify(leaderboard, null, 2));
         return 0;
       }
 
       // Find user in leaderboard (by username as Kick uses usernames in leaderboard)
+      this.logger.log(`🔍 [DEBUG] Procurando usuário "${username}" no array com ${giftsArray.length} entradas`);
       const userEntry = giftsArray.find(
         (entry: any) => entry.username?.toLowerCase() === username.toLowerCase(),
       );
 
       if (!userEntry) {
         this.logger.log(`ℹ️ [Kick] User ${username} not found in Gift Subs ${window} leaderboard`);
+        this.logger.log(`🔍 [DEBUG] Usuários disponíveis no array (primeiros 10):`, 
+          giftsArray.slice(0, 10).map((e: any) => ({ username: e.username, gifted_amount: e.gifted_amount, quantity: e.quantity }))
+        );
         return 0;
       }
 
+      this.logger.log(`✅ [DEBUG] Usuário encontrado! Entry completa:`, JSON.stringify(userEntry, null, 2));
       const giftCount = userEntry.gifted_amount || userEntry.quantity || 0;
 
-      this.logger.log(`📊 Found ${giftCount} gifted subs from user ${username}`);
+      this.logger.log(`📊 Found ${giftCount} gifted subs from user ${username} (window: ${window})`);
       return giftCount;
     } catch (error) {
       this.logger.error(`❌ Error fetching gift subs for user ${username}:`, error);
+      this.logger.error(`❌ [DEBUG] Error stack:`, error instanceof Error ? error.stack : String(error));
       return 0;
     }
   }
