@@ -9,7 +9,7 @@ import { TwitchService } from '../twitch/twitch.service';
 import * as crypto from 'crypto';
 
 // Import enum type from Prisma
-type TwitchBitsCategory = 'DAILY' | 'WEEKLY' | 'MONTHLY';
+type TwitchBitsCategory = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 
 interface TwitchBitsLeaderboardResponse {
   data: Array<{
@@ -98,7 +98,7 @@ export class TwitchBitsGiveawayService {
 
   /**
    * Generate name for Twitch Bits giveaway
-   * Format: "Sorteio de Bits - Diário/Semanal/Mensal - DD MM YYYY"
+   * Format: "Sorteio de Bits - Diário/Semanal/Mensal/Anual - DD MM YYYY"
    */
   private generateGiveawayName(
     category: TwitchBitsCategory,
@@ -114,7 +114,9 @@ export class TwitchBitsGiveawayService {
         ? 'Diário'
         : category === 'WEEKLY'
           ? 'Semanal'
-          : 'Mensal';
+          : category === 'MONTHLY'
+            ? 'Mensal'
+            : 'Anual';
     return `Sorteio de Bits - ${categoryLabel} - ${day} ${month} ${year}`;
   }
 
@@ -124,9 +126,9 @@ export class TwitchBitsGiveawayService {
    */
   async create(userId: string, dto: CreateTwitchBitsGiveawayDto) {
     // Validate required dates based on category
-    if (dto.category === 'DAILY' || dto.category === 'WEEKLY' || dto.category === 'MONTHLY') {
+    if (dto.category === 'DAILY' || dto.category === 'WEEKLY' || dto.category === 'MONTHLY' || dto.category === 'YEARLY') {
       if (!dto.startDate) {
-        throw new BadRequestException('startDate is required for DAILY, WEEKLY, and MONTHLY categories');
+        throw new BadRequestException('startDate is required for DAILY, WEEKLY, MONTHLY, and YEARLY categories');
       }
     }
 

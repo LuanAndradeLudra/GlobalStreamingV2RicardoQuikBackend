@@ -71,6 +71,7 @@ enum TwitchBitsCategory {
   DAILY
   WEEKLY
   MONTHLY
+  YEARLY
 }
 
 enum TwitchGiftSubsCategory {
