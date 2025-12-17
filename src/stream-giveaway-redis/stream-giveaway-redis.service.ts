@@ -88,8 +88,35 @@ export class StreamGiveawayRedisService {
       this.logger.log(`🗑️ Giveaway key removed: ${key}`);
     }
 
-    // Remove métricas (opcional - pode manter com TTL para histórico)
+    // Remove métricas
     await this.redis.del(this.getMetricsKey(streamGiveawayId));
+    this.logger.log(`🗑️ Metrics key removed: ${this.getMetricsKey(streamGiveawayId)}`);
+
+    // Remove todos os participantes relacionados ao sorteio
+    await this.removeAllParticipants(streamGiveawayId);
+  }
+
+  /**
+   * Remove todos os participantes de um sorteio do Redis
+   */
+  async removeAllParticipants(streamGiveawayId: string): Promise<void> {
+    this.logger.log(`📥 Removing all participants for giveaway: ${streamGiveawayId}`);
+
+    // Busca todas as chaves de participantes para este sorteio
+    const pattern = `${this.PARTICIPANTS_PREFIX}:${streamGiveawayId}:*`;
+    const keys = await this.redis.keys(pattern);
+
+    if (keys.length === 0) {
+      this.logger.log(`ℹ️ No participant keys found for giveaway: ${streamGiveawayId}`);
+      return;
+    }
+
+    // Remove todas as chaves encontradas
+    for (const key of keys) {
+      await this.redis.del(key);
+    }
+
+    this.logger.log(`🗑️ Removed ${keys.length} participant keys for giveaway: ${streamGiveawayId}`);
   }
 
   /**

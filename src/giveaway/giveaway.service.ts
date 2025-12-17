@@ -1001,10 +1001,15 @@ export class GiveawayService {
    * Delete a stream giveaway.
    * Ensures the stream giveaway belongs to the authenticated admin user.
    * Related data (participants, configs, overrides) will be deleted automatically via cascade.
+   * Also removes all Redis data (active giveaway keys, metrics, and participants).
    */
   async remove(userId: string, id: string): Promise<void> {
     // Ensure the stream giveaway exists and belongs to the user
     const streamGiveaway = await this.findOne(userId, id);
+
+    // Remove from Redis before deleting from database
+    // This ensures Redis is cleaned up even if the giveaway is deleted directly
+    await this.removeGiveawayFromRedis(streamGiveaway);
 
     // Delete the stream giveaway (cascade will handle related records)
     await this.prisma.streamGiveaway.delete({
