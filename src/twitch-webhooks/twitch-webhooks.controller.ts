@@ -31,7 +31,6 @@ export class TwitchWebhooksController {
     description: 'GET endpoint for webhook verification or health check',
   })
   async webhookGet(@Req() req: Request): Promise<{ status: string; message: string }> {
-    this.logger.log('🔔 [Twitch Webhook GET] Health check');
     return { status: 'ok', message: 'Webhook endpoint is accessible' };
   }
 
@@ -56,14 +55,6 @@ export class TwitchWebhooksController {
     @Req() req: Request & { rawBody?: Buffer },
     @Res() res: Response,
   ): Promise<void> {
-    // Log ALL incoming requests - FIRST THING
-    this.logger.log('🔔 [Twitch Webhook] ====== WEBHOOK REQUEST RECEIVED ======');
-    this.logger.log('🔔 [Twitch Webhook] Timestamp:', new Date().toISOString());
-    this.logger.log('🔔 [Twitch Webhook] Method:', req.method);
-    this.logger.log('🔔 [Twitch Webhook] URL:', req.url);
-    this.logger.log('🔔 [Twitch Webhook] IP:', req.ip || req.socket?.remoteAddress);
-    this.logger.log('🔔 [Twitch Webhook] User-Agent:', req.headers['user-agent']);
-
     // Extract headers (NestJS converts headers to lowercase)
     // Twitch EventSub uses these headers:
     // - Twitch-Eventsub-Message-Id
@@ -79,15 +70,10 @@ export class TwitchWebhooksController {
     const subscriptionType = headers['twitch-eventsub-subscription-type'];
     const subscriptionVersion = headers['twitch-eventsub-subscription-version'];
 
-    // Log all headers for debugging
-    this.logger.log('🔔 [Twitch Webhook] All headers:', JSON.stringify(headers, null, 2));
-
     // Check if this is a Twitch webhook request (has Twitch-Eventsub-Message-Type header)
     const isTwitchWebhook = !!messageType || !!headers['twitch-eventsub-message-type'];
 
     if (!isTwitchWebhook) {
-      // This is not a Twitch webhook request - probably a test/manual request
-      this.logger.warn('⚠️ [Twitch Webhook] Received non-Twitch request (likely test/manual)');
       res.status(HttpStatus.OK).json({
         status: 'ok',
         message: 'Webhook endpoint is accessible. This endpoint expects Twitch EventSub webhook events.',
@@ -98,22 +84,12 @@ export class TwitchWebhooksController {
     // Validate required headers
     if (!messageId || !timestamp || !signature || !messageType) {
       this.logger.error('❌ [Twitch Webhook] Missing required headers');
-      this.logger.error('❌ [Twitch Webhook] Missing:', {
-        messageId: !messageId,
-        timestamp: !timestamp,
-        signature: !signature,
-        messageType: !messageType,
-      });
       throw new BadRequestException('Missing required webhook headers');
     }
 
     // Get raw body for signature verification
     // CRITICAL: Use rawBody Buffer exactly as received, without modifications
     const rawBody = req.rawBody || Buffer.from(JSON.stringify(body), 'utf8');
-    
-    this.logger.log('📝 [Twitch Webhook] Raw body type:', typeof rawBody);
-    this.logger.log('📝 [Twitch Webhook] Raw body length:', rawBody.length);
-    this.logger.log('📝 [Twitch Webhook] Raw body preview:', rawBody.toString('utf8').substring(0, 200));
 
     // Verify signature (skip for webhook_callback_verification message type)
     if (messageType !== 'webhook_callback_verification') {
@@ -128,10 +104,6 @@ export class TwitchWebhooksController {
         this.logger.error('❌ [Twitch Webhook] Invalid signature');
         throw new BadRequestException('Invalid webhook signature');
       }
-
-      this.logger.log('✅ [Twitch Webhook] Signature verified successfully');
-    } else {
-      this.logger.log('🔐 [Twitch Webhook] Webhook callback verification - skipping signature check');
     }
 
     // Parse JSON from raw body (after signature verification)
@@ -148,10 +120,6 @@ export class TwitchWebhooksController {
 
     // Handle different message types
     try {
-      this.logger.log('📦 [Twitch Webhook] Message type:', messageType);
-      this.logger.log('📦 [Twitch Webhook] Subscription type:', subscriptionType);
-      this.logger.log('📦 [Twitch Webhook] Event data:', JSON.stringify(eventData, null, 2));
-
       switch (messageType) {
         case 'webhook_callback_verification':
           // Twitch requires us to return the challenge string for verification
@@ -160,7 +128,6 @@ export class TwitchWebhooksController {
             this.logger.error('❌ [Twitch Webhook] Missing challenge in verification request');
             throw new BadRequestException('Missing challenge');
           }
-          this.logger.log('✅ [Twitch Webhook] Webhook verification challenge received');
           // Return challenge as plain text (not JSON)
           res.status(HttpStatus.OK).contentType('text/plain').send(challenge);
           return;
@@ -169,8 +136,6 @@ export class TwitchWebhooksController {
           // Process notification events
           if (subscriptionType === 'channel.chat.message') {
             await this.twitchWebhooksService.processChatMessage(eventData.event);
-          } else {
-            this.logger.warn(`⚠️ [Twitch Webhook] Unknown subscription type: ${subscriptionType}`);
           }
           break;
 
@@ -178,9 +143,6 @@ export class TwitchWebhooksController {
           // Process revocation events
           await this.twitchWebhooksService.processRevocation(eventData);
           break;
-
-        default:
-          this.logger.warn(`⚠️ [Twitch Webhook] Unknown message type: ${messageType}`);
       }
 
       // Return JSON response for all other message types

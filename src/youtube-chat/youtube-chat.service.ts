@@ -85,7 +85,6 @@ export class YouTubeChatService {
 
       const broadcasts = broadcastsResponse.data.items || [];
       if (broadcasts.length === 0) {
-        this.logger.log(`📺 [YouTube] No active live stream found for channel ${channelId}`);
         return null;
       }
 
@@ -93,11 +92,9 @@ export class YouTubeChatService {
       const liveChatId = live.snippet?.liveChatId;
 
       if (!liveChatId) {
-        this.logger.warn(`⚠️ [YouTube] Active broadcast found but no liveChatId for channel ${channelId}`);
         return null;
       }
 
-      this.logger.log(`✅ [YouTube] Found liveChatId ${liveChatId} for channel ${channelId}`);
       return liveChatId;
     } catch (error) {
       this.logger.error(`❌ [YouTube] Error getting liveChatId for channel ${channelId}:`, error);
@@ -114,11 +111,8 @@ export class YouTubeChatService {
     refreshToken: string | null,
   ): Promise<void> {
     if (this.workers.has(channelId)) {
-      this.logger.warn(`⚠️ [YouTube] Chat polling already running for channel ${channelId}`);
       return;
     }
-
-    this.logger.log(`🔄 [YouTube] Starting chat polling for channel ${channelId}`);
 
     // Setup OAuth2 client (reuse Google OAuth credentials)
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
@@ -157,9 +151,6 @@ export class YouTubeChatService {
 
     // Get liveChatId
     const liveChatId = await this.getLiveChatId(channelId, accessToken);
-    if (!liveChatId) {
-      this.logger.warn(`⚠️ [YouTube] No active live stream for channel ${channelId}, worker will retry`);
-    }
 
     // Create worker
     const worker: ChatWorker = {
@@ -231,21 +222,19 @@ export class YouTubeChatService {
 
         // Handle rate limit
         if (error.code === 403 && error.message?.includes('quota')) {
-          this.logger.warn(`⚠️ [YouTube] Quota exceeded, backing off for 60 seconds`);
           worker.intervalId = setTimeout(poll, 60000);
           return;
         }
 
         // Handle token refresh
         if (error.code === 401) {
-          this.logger.log(`🔄 [YouTube] Token expired, refreshing...`);
           try {
             const { credentials } = await worker.oauth2Client.refreshAccessToken();
             worker.oauth2Client.setCredentials(credentials);
             worker.intervalId = setTimeout(poll, 5000);
             return;
           } catch (refreshError) {
-            this.logger.error(`❌ [YouTube] Failed to refresh token:`, refreshError);
+            this.logger.error(`❌ [YouTube] Failed to refresh token for channel ${worker.channelId}:`, refreshError);
             this.stopChatPolling(worker.channelId);
             return;
           }
@@ -269,8 +258,6 @@ export class YouTubeChatService {
       return;
     }
 
-    this.logger.log(`🛑 [YouTube] Stopping chat polling for channel ${channelId}`);
-
     if (worker.intervalId) {
       clearTimeout(worker.intervalId);
       worker.intervalId = null;
@@ -285,15 +272,12 @@ export class YouTubeChatService {
    */
   private async processChatMessage(channelId: string, message: LiveChatMessage): Promise<void> {
     try {
-      console.log('message', message);
       const displayMessage = message.snippet.displayMessage || message.snippet.textMessageDetails?.messageText || '';
       const authorName = message.authorDetails.displayName;
       const authorChannelId = message.authorDetails.channelId;
       const avatarUrl = message.authorDetails.profileImageUrl;
       const isSubscriber = message.authorDetails.isSubscriber || false;
       const subscriberMonthDuration = message.authorDetails.subscriberMonthDuration || 0;
-
-      this.logger.log(`💬 [YouTube] ${authorName}: ${displayMessage}`);
 
       // Check if message contains giveaway keyword
       // Get all active giveaways for this channel
@@ -323,6 +307,9 @@ export class YouTubeChatService {
         return Array.isArray(platforms) && platforms.includes(ConnectedPlatform.YOUTUBE);
       });
 
+      // Track entries added for this user
+      const entriesAdded: string[] = [];
+
       for (const giveaway of giveaways) {
         const keyword = (giveaway.keyword || '').toLowerCase();
         const messageLower = displayMessage.toLowerCase();
@@ -331,6 +318,13 @@ export class YouTubeChatService {
         if (messageLower.includes(keyword)) {
           // Determine entry method based on subscription status
           const entryMethod = isSubscriber ? 'YOUTUBE_SUB' : 'YOUTUBE_NON_SUB';
+          const role = entryMethod;
+
+          // Check if role is allowed in this giveaway
+          const allowedRoles = giveaway.allowedRoles as string[] || [];
+          if (!allowedRoles.includes(role)) {
+            continue; // Skip this giveaway, check next one
+          }
 
           // Get ticket count for this method
           const ticketCalculation = await this.giveawayService.calculateTicketsForParticipant({
@@ -358,9 +352,7 @@ export class YouTubeChatService {
               },
             });
 
-            this.logger.log(
-              `✅ [YouTube] Added participant ${authorName} to giveaway ${giveaway.id} with ${tickets} tickets`,
-            );
+            entriesAdded.push(`${entryMethod} (${tickets} tickets)`);
           }
         }
       }
@@ -407,15 +399,18 @@ export class YouTubeChatService {
                 },
               });
 
-              this.logger.log(
-                `✅ [YouTube] Added SuperChat participant ${authorName} to giveaway ${giveaway.id} with ${tickets} tickets`,
-              );
+              entriesAdded.push(`SUPERCHAT (${tickets} tickets)`);
             }
           }
         }
       }
+
+      // Log consolidado: userId e entradas adicionadas
+      if (entriesAdded.length > 0) {
+        this.logger.log(`✅ [YouTube] userId ${authorChannelId} added entries: ${entriesAdded.join(', ')}`);
+      }
     } catch (error) {
-      this.logger.error(`❌ [YouTube] Error processing chat message:`, error);
+      this.logger.error(`❌ [YouTube] Error processing chat message for userId ${message.authorDetails.channelId}:`, error);
     }
   }
 
@@ -450,7 +445,6 @@ export class YouTubeChatService {
    * Stop all workers (useful for shutdown)
    */
   stopAllWorkers(): void {
-    this.logger.log(`🛑 [YouTube] Stopping all chat polling workers`);
     for (const channelId of this.workers.keys()) {
       this.stopChatPolling(channelId);
     }

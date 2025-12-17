@@ -313,8 +313,6 @@ export class TwitchService {
           params.after = cursor;
         }
 
-        console.log('🔍 [Twitch API] Fetching subscriptions page:', { cursor, totalGifted });
-
         const response = await this.axiosInstance.get(`${this.twitchApiUrl}/subscriptions`, {
           headers: {
             Authorization: `Bearer ${accessToken}`,

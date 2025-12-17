@@ -100,23 +100,16 @@ export class TwitchWebhooksService {
    * Process chat message event from EventSub
    */
   async processChatMessage(event: any): Promise<void> {
-    this.logger.log('📨 [Twitch Webhook] Chat message received');
-    this.logger.log('📝 [Twitch Webhook] Message details:', JSON.stringify(event, null, 2));
+    const userId = event.chatter_user_id || 'unknown';
     
     try {
       const messageText = event.message?.text || '';
       const username = event.chatter_user_name;
-      const userId = event.chatter_user_id;
       const broadcasterUserId = event.broadcaster_user_id;
 
       if (!messageText || !username || !userId || !broadcasterUserId) {
-        this.logger.warn('⚠️ Missing required fields in chat message event');
         return;
       }
-
-      this.logger.log(`💬 [Twitch] Message: "${messageText}"`);
-      this.logger.log(`👤 [Twitch] From: ${username} (ID: ${userId})`);
-      this.logger.log(`📺 [Twitch] Broadcaster ID: ${broadcasterUserId}`);
 
       // Mapeia broadcasterUserId (Twitch) → userId (nosso sistema)
       const connectedAccount = await this.prisma.connectedAccount.findUnique({
@@ -129,12 +122,10 @@ export class TwitchWebhooksService {
       });
 
       if (!connectedAccount) {
-        this.logger.warn(`⚠️ No connected account found for Twitch broadcaster ID: ${broadcasterUserId}`);
         return;
       }
 
       const adminUserId = connectedAccount.userId;
-      this.logger.log(`✅ Found admin userId: ${adminUserId} for broadcaster: ${broadcasterUserId}`);
 
       // Busca sorteio ativo por palavra-chave na mensagem
       const activeGiveaway = await this.redisService.findActiveGiveawayByKeyword(
@@ -144,11 +135,8 @@ export class TwitchWebhooksService {
       );
 
       if (!activeGiveaway) {
-        this.logger.log('❌ No active giveaway found for this message');
         return;
       }
-
-      this.logger.log(`✅ Active giveaway found: ${activeGiveaway.streamGiveawayId}`);
 
       // Incrementa métrica de mensagens processadas
       await this.redisService.incrementMetric(
@@ -156,14 +144,9 @@ export class TwitchWebhooksService {
         'total_messages_processed',
       );
 
-      // ✅ AGORA SIM: Busca foto e tier (só para mensagens com keyword válida)
-      this.logger.log(`🔍 Fetching user info and subscription for ${username}...`);
-
       // Busca informações do usuário (foto, etc)
       const userInfo = await this.twitchService.getUserById(adminUserId, userId);
       const avatarUrl = userInfo?.profile_image_url || undefined;
-
-      this.logger.log(`👤 User info: ${userInfo?.display_name}, avatar: ${avatarUrl ? 'found' : 'not found'}`);
 
       // Verifica se o usuário é subscriber e qual tier
       let subscriptionData: any = null;
@@ -173,9 +156,8 @@ export class TwitchWebhooksService {
           broadcasterUserId,
           userId,
         );
-        this.logger.log(`✅ Subscription check completed`);
       } catch (error) {
-        this.logger.error(`❌ Error checking subscription:`, error);
+        this.logger.error(`❌ [Twitch] Error checking subscription for userId ${userId}:`, error);
         // Continua como NON_SUB
       }
 
@@ -184,7 +166,6 @@ export class TwitchWebhooksService {
 
       if (subscriptionData?.data?.[0]) {
         const tier = subscriptionData.data[0].tier;
-        this.logger.log(`✅ User is subscribed! Tier: ${tier}`);
         
         // Mapeia tier para role e method
         switch (tier) {
@@ -204,85 +185,85 @@ export class TwitchWebhooksService {
             role = 'TWITCH_TIER_1'; // Fallback para Tier 1
             method = EntryMethod.TWITCH_TIER_1;
         }
-      } else {
-        this.logger.log(`ℹ️ User is not subscribed (NON_SUB)`);
       }
 
-      // Verifica dedupe - usuário já participou COM ESTE MÉTODO?
-      // Nota: Mesmo usuário pode ter múltiplas entradas (tier + bits + gift subs)
-      const isDuplicateTier = await this.redisService.checkDuplicate(
-        activeGiveaway.streamGiveawayId,
-        ConnectedPlatform.TWITCH,
-        userId,
-        method, // Verifica se já entrou com este tier específico
-      );
+      // Track entries added for this user
+      const entriesAdded: string[] = [];
 
-      if (isDuplicateTier) {
-        this.logger.log(`⚠️ User ${username} already participated with method ${method}`);
+      // Verifica se o role está permitido neste sorteio
+      if (!activeGiveaway.allowedRoles.includes(role)) {
         // Não retorna - ainda pode ter entradas de doações (bits/gift subs)
-      }
+        // Mas não adiciona entrada por tier/role
+      } else {
+        // Verifica dedupe - usuário já participou COM ESTE MÉTODO?
+        // Nota: Mesmo usuário pode ter múltiplas entradas (tier + bits + gift subs)
+        const isDuplicateTier = await this.redisService.checkDuplicate(
+          activeGiveaway.streamGiveawayId,
+          ConnectedPlatform.TWITCH,
+          userId,
+          method, // Verifica se já entrou com este tier específico
+        );
 
-      // ✅ Adiciona entrada por TIER (se não duplicado)
-      if (!isDuplicateTier) {
-        // Calcula tickets baseado nas regras do sorteio (tier)
-        const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
-          streamGiveawayId: activeGiveaway.streamGiveawayId,
-          platform: ConnectedPlatform.TWITCH,
-          adminUserId: activeGiveaway.userId,
-          role: role,
-        });
-
-        if (ticketInfo.totalTickets === 0) {
-          this.logger.log(`⚠️ User ${username} has 0 tickets for role ${role} (role not allowed or no rules configured)`);
-        } else {
-          // Adiciona participante ao banco de dados (entrada por tier)
-          const participantTier = await this.giveawayService.addParticipant(
-            activeGiveaway.userId,
-            activeGiveaway.streamGiveawayId,
-            {
-              platform: ConnectedPlatform.TWITCH,
-              externalUserId: userId,
-              username: username,
-              avatarUrl: avatarUrl,
-              method: method,
-              tickets: ticketInfo.totalTickets,
-              metadata: {
-                messageText,
-                role,
-                tier: subscriptionData?.data?.[0]?.tier || null,
-                baseTickets: ticketInfo.baseTickets,
-              },
-            },
-          );
-
-          // Marca no Redis para dedupe
-          await this.redisService.markParticipant(
-            activeGiveaway.streamGiveawayId,
-            ConnectedPlatform.TWITCH,
-            userId,
-            method,
-          );
-
-          // Incrementa métrica de participantes
-          await this.redisService.incrementMetric(
-            activeGiveaway.streamGiveawayId,
-            'total_participants',
-          );
-
-          // Broadcast em tempo real
-          this.realtimeGateway.emitParticipantAdded({
+        // ✅ Adiciona entrada por TIER (se não duplicado)
+        if (!isDuplicateTier) {
+          // Calcula tickets baseado nas regras do sorteio (tier)
+          const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
             streamGiveawayId: activeGiveaway.streamGiveawayId,
-            participant: {
-              id: participantTier.id,
-              username: participantTier.username,
-              platform: participantTier.platform,
-              method: participantTier.method,
-              tickets: participantTier.tickets,
-              avatarUrl: participantTier.avatarUrl || undefined,
-            },
+            platform: ConnectedPlatform.TWITCH,
+            adminUserId: activeGiveaway.userId,
+            role: role,
           });
 
-          this.logger.log(`🎉 Participant added (tier): ${username} with ${ticketInfo.totalTickets} tickets (${role})`);
+          if (ticketInfo.totalTickets > 0) {
+            // Adiciona participante ao banco de dados (entrada por tier)
+            const participantTier = await this.giveawayService.addParticipant(
+              activeGiveaway.userId,
+              activeGiveaway.streamGiveawayId,
+              {
+                platform: ConnectedPlatform.TWITCH,
+                externalUserId: userId,
+                username: username,
+                avatarUrl: avatarUrl,
+                method: method,
+                tickets: ticketInfo.totalTickets,
+                metadata: {
+                  messageText,
+                  role,
+                  tier: subscriptionData?.data?.[0]?.tier || null,
+                  baseTickets: ticketInfo.baseTickets,
+                },
+              },
+            );
+
+            // Marca no Redis para dedupe
+            await this.redisService.markParticipant(
+              activeGiveaway.streamGiveawayId,
+              ConnectedPlatform.TWITCH,
+              userId,
+              method,
+            );
+
+            // Incrementa métrica de participantes
+            await this.redisService.incrementMetric(
+              activeGiveaway.streamGiveawayId,
+              'total_participants',
+            );
+
+            // Broadcast em tempo real
+            this.realtimeGateway.emitParticipantAdded({
+              streamGiveawayId: activeGiveaway.streamGiveawayId,
+              participant: {
+                id: participantTier.id,
+                username: participantTier.username,
+                platform: participantTier.platform,
+                method: participantTier.method,
+                tickets: participantTier.tickets,
+                avatarUrl: participantTier.avatarUrl || undefined,
+              },
+            });
+
+            entriesAdded.push(`${method} (${ticketInfo.totalTickets} tickets)`);
+          }
         }
       }
 
@@ -291,11 +272,7 @@ export class TwitchWebhooksService {
         (config) => config.platform === ConnectedPlatform.TWITCH && config.unitType === 'BITS',
       );
 
-      this.logger.log(`🔍 Donation configs check - BITS: ${bitsConfig ? 'ENABLED' : 'DISABLED'}`);
-
       if (bitsConfig) {
-        this.logger.log(`🔍 Checking BITS donations for ${username}...`);
-
         // Verifica se já tem entrada de BITS
         const isDuplicateBits = await this.redisService.checkDuplicate(
           activeGiveaway.streamGiveawayId,
@@ -314,8 +291,6 @@ export class TwitchWebhooksService {
           );
 
           if (bitsAmount > 0) {
-            this.logger.log(`✅ User donated ${bitsAmount} bits in ${bitsConfig.donationWindow} window`);
-
             // Calcula tickets baseado nas regras de doação (ONLY donation, no base role tickets)
             const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
               streamGiveawayId: activeGiveaway.streamGiveawayId,
@@ -371,13 +346,9 @@ export class TwitchWebhooksService {
                 },
               });
 
-              this.logger.log(`🎉 Participant added (bits): ${username} with ${ticketInfo.bitsTickets} tickets (${bitsAmount} bits)`);
+              entriesAdded.push(`BITS (${ticketInfo.bitsTickets} tickets)`);
             }
-          } else {
-            this.logger.log(`ℹ️ User has no bits donations in ${bitsConfig.donationWindow} window`);
           }
-        } else {
-          this.logger.log(`⚠️ User ${username} already has BITS entry`);
         }
       }
 
@@ -386,11 +357,7 @@ export class TwitchWebhooksService {
         (config) => config.platform === ConnectedPlatform.TWITCH && config.unitType === 'GIFT_SUB',
       );
 
-      this.logger.log(`🔍 Donation configs check - GIFT_SUB: ${giftSubConfig ? 'ENABLED' : 'DISABLED'}`);
-
       if (giftSubConfig) {
-        this.logger.log(`🔍 Checking GIFT_SUB donations for ${username}...`);
-
         // Verifica se já tem entrada de GIFT_SUB
         const isDuplicateGiftSub = await this.redisService.checkDuplicate(
           activeGiveaway.streamGiveawayId,
@@ -409,8 +376,6 @@ export class TwitchWebhooksService {
           );
 
           if (giftSubAmount > 0) {
-            this.logger.log(`✅ User gifted ${giftSubAmount} subs in ${giftSubConfig.donationWindow} window`);
-
             // Calcula tickets baseado nas regras de doação (ONLY donation, no base role tickets)
             const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
               streamGiveawayId: activeGiveaway.streamGiveawayId,
@@ -419,8 +384,6 @@ export class TwitchWebhooksService {
               role: 'NON_SUB', // Use NON_SUB to ensure baseTickets = 0
               totalGiftSubs: giftSubAmount,
             });
-
-            this.logger.log(`📊 Gift sub ticket calculation: baseTickets=${ticketInfo.baseTickets}, bitsTickets=${ticketInfo.bitsTickets}, giftTickets=${ticketInfo.giftTickets}, total=${ticketInfo.totalTickets}`);
 
             if (ticketInfo.giftTickets > 0) {
               // Adiciona participante ao banco de dados (entrada por GIFT_SUB)
@@ -468,18 +431,18 @@ export class TwitchWebhooksService {
                 },
               });
 
-              this.logger.log(`🎉 Participant added (gift subs): ${username} with ${ticketInfo.giftTickets} tickets (${giftSubAmount} subs)`);
+              entriesAdded.push(`GIFT_SUB (${ticketInfo.giftTickets} tickets)`);
             }
-          } else {
-            this.logger.log(`ℹ️ User has no gift sub donations in ${giftSubConfig.donationWindow} window`);
           }
-        } else {
-          this.logger.log(`⚠️ User ${username} already has GIFT_SUB entry`);
         }
       }
+
+      // Log consolidado: userId e entradas adicionadas
+      if (entriesAdded.length > 0) {
+        this.logger.log(`✅ [Twitch] userId ${userId} added entries: ${entriesAdded.join(', ')}`);
+      }
     } catch (error) {
-      this.logger.error('❌ Error processing chat message:', error);
-      this.logger.error('❌ Error stack:', error instanceof Error ? error.stack : String(error));
+      this.logger.error(`❌ [Twitch] Error processing chat message for userId ${userId}:`, error);
     }
   }
 
@@ -504,7 +467,7 @@ export class TwitchWebhooksService {
       
       return userEntry?.score || 0;
     } catch (error) {
-      this.logger.error(`Error fetching bits for user ${userId}:`, error);
+      this.logger.error(`❌ [Twitch] Error fetching bits for userId ${userId}:`, error);
       return 0;
     }
   }
@@ -534,11 +497,9 @@ export class TwitchWebhooksService {
       // 1. Armazenar eventos em tempo real via EventSub
       // 2. Ou fazer snapshot periódico e comparar deltas
       
-      this.logger.log(`📊 Found ${giftSubCount} active gifted subs from user ${userId}`);
-      
       return giftSubCount;
     } catch (error) {
-      this.logger.error(`Error fetching gift subs for user ${userId}:`, error);
+      this.logger.error(`❌ [Twitch] Error fetching gift subs for userId ${userId}:`, error);
       return 0;
     }
   }
@@ -564,15 +525,7 @@ export class TwitchWebhooksService {
    * This happens when a subscription is revoked (e.g., bot banned, timed out, etc.)
    */
   async processRevocation(event: any): Promise<void> {
-    this.logger.warn('⚠️ [Twitch Webhook] Subscription revoked');
-    this.logger.log('📝 [Twitch Webhook] Revocation details:', JSON.stringify(event, null, 2));
-    
-    if (event.subscription) {
-      this.logger.log(`🔴 [Twitch Webhook] Subscription ID: ${event.subscription.id}`);
-      this.logger.log(`🔴 [Twitch Webhook] Subscription Type: ${event.subscription.type}`);
-      this.logger.log(`🔴 [Twitch Webhook] Status: ${event.subscription.status}`);
-    }
-
+    this.logger.error('❌ [Twitch Webhook] Subscription revoked');
     // TODO: Handle revocation - cleanup subscriptions, notify user, etc.
   }
 }
