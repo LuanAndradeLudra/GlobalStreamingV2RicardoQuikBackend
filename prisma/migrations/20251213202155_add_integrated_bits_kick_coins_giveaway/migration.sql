@@ -81,3 +81,6 @@ ALTER TABLE "IntegratedBitsKickCoinsGiveawayWinner" ADD CONSTRAINT "IntegratedBi
 ALTER TABLE "IntegratedBitsKickCoinsGiveawayWinner" ADD CONSTRAINT "IntegratedBitsKickCoinsGiveawayWinner_winnerParticipantI_fkey" FOREIGN KEY ("winnerParticipantId") REFERENCES "IntegratedBitsKickCoinsGiveawayParticipant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 
+
+
+

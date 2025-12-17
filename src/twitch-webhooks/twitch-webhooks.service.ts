@@ -316,12 +316,12 @@ export class TwitchWebhooksService {
           if (bitsAmount > 0) {
             this.logger.log(`✅ User donated ${bitsAmount} bits in ${bitsConfig.donationWindow} window`);
 
-            // Calcula tickets baseado nas regras de doação
+            // Calcula tickets baseado nas regras de doação (ONLY donation, no base role tickets)
             const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
               streamGiveawayId: activeGiveaway.streamGiveawayId,
               platform: ConnectedPlatform.TWITCH,
               adminUserId: activeGiveaway.userId,
-              role: role, // Usa o role base para buscar regras
+              role: 'NON_SUB', // Use NON_SUB to ensure baseTickets = 0
               totalBits: bitsAmount,
             });
 
@@ -411,12 +411,12 @@ export class TwitchWebhooksService {
           if (giftSubAmount > 0) {
             this.logger.log(`✅ User gifted ${giftSubAmount} subs in ${giftSubConfig.donationWindow} window`);
 
-            // Calcula tickets baseado nas regras de doação
+            // Calcula tickets baseado nas regras de doação (ONLY donation, no base role tickets)
             const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
               streamGiveawayId: activeGiveaway.streamGiveawayId,
               platform: ConnectedPlatform.TWITCH,
               adminUserId: activeGiveaway.userId,
-              role: role,
+              role: 'NON_SUB', // Use NON_SUB to ensure baseTickets = 0
               totalGiftSubs: giftSubAmount,
             });
 

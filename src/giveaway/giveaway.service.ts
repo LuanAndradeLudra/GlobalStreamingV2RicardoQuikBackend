@@ -806,10 +806,12 @@ export class GiveawayService {
     role: string; // NON_SUB, TWITCH_TIER_1, TWITCH_TIER_2, TWITCH_TIER_3, KICK_SUB, YOUTUBE_SUB
     totalBits?: number; // total de bits válidos para esse stream giveaway
     totalGiftSubs?: number; // total de gift subs válidos para esse stream giveaway
+    totalKickCoins?: number; // total de Kick Coins válidos para esse stream giveaway
   }): Promise<{
     baseTickets: number;
     bitsTickets: number;
     giftTickets: number;
+    kickCoinsTickets: number;
     totalTickets: number;
   }> {
     // Get stream giveaway with donation configs to check which donation types are enabled
@@ -943,6 +945,45 @@ export class GiveawayService {
       }
     }
 
+    // 4. Calculate Kick Coins tickets (if enabled via donation config)
+    let kickCoinsTickets = 0;
+    const kickCoinsConfig = streamGiveaway.donationConfigs.find(
+      (config) => config.platform === input.platform && config.unitType === 'KICK_COINS',
+    );
+    if (kickCoinsConfig && input.totalKickCoins && input.totalKickCoins > 0) {
+      // Check for stream giveaway-specific override first
+      const donationOverride = await this.prisma.streamGiveawayDonationRuleOverride.findUnique({
+        where: {
+          streamGiveawayId_platform_unitType: {
+            streamGiveawayId: input.streamGiveawayId,
+            platform: input.platform,
+            unitType: 'KICK_COINS',
+          },
+        },
+      });
+
+      if (donationOverride) {
+        kickCoinsTickets = Math.floor(
+          (input.totalKickCoins / donationOverride.unitSize) * donationOverride.ticketsPerUnitSize,
+        );
+      } else {
+        // Use global rule
+        const kickCoinsRule = await this.prisma.ticketGlobalDonationRule.findUnique({
+          where: {
+            userId_platform_unitType: {
+              userId: input.adminUserId,
+              platform: input.platform,
+              unitType: 'KICK_COINS',
+            },
+          },
+        });
+
+        if (kickCoinsRule) {
+          kickCoinsTickets = Math.floor((input.totalKickCoins / kickCoinsRule.unitSize) * kickCoinsRule.ticketsPerUnitSize);
+        }
+      }
+    }
+
     // For now, return only baseTickets as total (bits and gift tickets are calculated but not included)
     // TODO: Include bitsTickets and giftTickets in totalTickets when donation windows are properly integrated
     const totalTickets = baseTickets;
@@ -951,6 +992,7 @@ export class GiveawayService {
       baseTickets,
       bitsTickets,
       giftTickets,
+      kickCoinsTickets,
       totalTickets,
     };
   }

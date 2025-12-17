@@ -286,3 +286,6 @@ npm run start:dev
 2. Verificar namespace: `/giveaway`
 3. Verificar porta do backend (padrão: 3000)
 
+
+
+

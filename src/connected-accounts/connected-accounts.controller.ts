@@ -293,8 +293,8 @@ export class ConnectedAccountsController {
       console.log('💾 [Kick OAuth Callback] Preparing to save connected account...');
       console.log('📝 [Kick OAuth Callback] Account data:', {
         platform: 'KICK',
-        externalChannelId: channelInfo.id.toString(),
-        displayName: channelInfo.display_name || channelInfo.username,
+        externalChannelId: channelInfo.id.toString(), // Use numeric ID
+        displayName: channelInfo.slug || channelInfo.display_name || channelInfo.username, // Use slug
         hasAccessToken: !!tokenResponse.access_token,
         hasRefreshToken: !!tokenResponse.refresh_token,
         scopes: tokenResponse.scope,
@@ -302,10 +302,11 @@ export class ConnectedAccountsController {
       });
 
       // Create or update connected account
+      // For Kick: externalChannelId = numeric ID, displayName = slug/username
       const createDto: CreateConnectedAccountDto = {
         platform: 'KICK' as ConnectedPlatform,
-        externalChannelId: channelInfo.id.toString(),
-        displayName: channelInfo.display_name || channelInfo.username,
+        externalChannelId: channelInfo.id.toString(), // Numeric channel ID
+        displayName: channelInfo.slug || channelInfo.display_name || channelInfo.username, // Slug for API calls
         accessToken: tokenResponse.access_token,
         refreshToken: tokenResponse.refresh_token,
         scopes: tokenResponse.scope,

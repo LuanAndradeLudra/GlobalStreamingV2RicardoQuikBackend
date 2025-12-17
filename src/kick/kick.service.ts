@@ -39,10 +39,10 @@ export class KickService {
       throw new BadRequestException('No Kick account connected');
     }
 
-    // externalChannelId for Kick is actually the channel slug/username
+    // For Kick: externalChannelId is the numeric ID, displayName is the slug/username
     return {
       accessToken: kickAccount.accessToken,
-      channelName: kickAccount.externalChannelId,
+      channelName: kickAccount.displayName, // Use displayName (slug) for API calls
     };
   }
 
