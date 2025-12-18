@@ -14,6 +14,20 @@ services:
     networks:
       - internal
 
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: trully-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.com
+      PGADMIN_DEFAULT_PASSWORD: senha_forte_aqui
+    ports:
+      - "127.0.0.1:5050:80" # só local
+    depends_on:
+      - db
+    networks:
+      - internal
+
   api:
     build: .
     container_name: trully-api
@@ -39,4 +53,3 @@ volumes:
   pgdata:
     name: gamerdubrasil_pgdata
   api_node_modules:
-    # (opcional) se você quiser reaproveitar o volume hash atual, me diga e eu ajusto
