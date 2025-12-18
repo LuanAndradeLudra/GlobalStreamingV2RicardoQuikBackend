@@ -1,4 +1,5 @@
-version: '3.9'
+version: "3.9"
+
 services:
   db:
     image: postgres:16-alpine
@@ -8,10 +9,11 @@ services:
       POSTGRES_DB: trullygiveaway
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports:
-      - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+
   api:
     build: .
     container_name: trully-api
@@ -20,11 +22,21 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/trullygiveaway?schema=public
       PORT: 3000
     ports:
-      - '3000:3000'
+      - "3000:3000"
     volumes:
       - .:/usr/src/app
-      - /usr/src/app/node_modules
+      - api_node_modules:/usr/src/app/node_modules
     depends_on:
       - db
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
 volumes:
   pgdata:
+    name: gamerdubrasil_pgdata
+  api_node_modules:
+    # (opcional) se você quiser reaproveitar o volume hash atual, me diga e eu ajusto
