@@ -120,7 +120,7 @@ export class IntegratedGiftSubsGiveawayService {
    * Create a new giveaway
    */
   async create(userId: string, dto: CreateIntegratedGiftSubsGiveawayDto) {
-    const name = this.generateGiveawayName();
+    const name = dto.name || this.generateGiveawayName();
 
     const giveaway = await (this.prisma as any).integratedGiftSubsGiveaway.create({
       data: {

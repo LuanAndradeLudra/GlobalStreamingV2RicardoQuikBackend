@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum } from 'class-validator';
+import { IsEnum, IsString, IsOptional } from 'class-validator';
 import { KickGiftSubsCategory } from '@prisma/client';
 
 export class CreateKickGiftSubsGiveawayDto {
@@ -10,6 +10,15 @@ export class CreateKickGiftSubsGiveawayDto {
   })
   @IsEnum(KickGiftSubsCategory)
   category: KickGiftSubsCategory;
+
+  @ApiProperty({
+    description: 'Name of the giveaway (optional - will be auto-generated if not provided)',
+    example: 'Weekly Kick Gift Subs Giveaway',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  name?: string;
 }
 
 

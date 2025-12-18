@@ -132,7 +132,7 @@ export class IntegratedBitsKickCoinsGiveawayService {
    * Create a new giveaway
    */
   async create(userId: string, dto: CreateIntegratedBitsKickCoinsGiveawayDto) {
-    const name = this.generateGiveawayName(dto.category);
+    const name = dto.name || this.generateGiveawayName(dto.category);
 
     const giveaway = await (this.prisma as any).integratedBitsKickCoinsGiveaway.create({
       data: {

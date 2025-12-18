@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsDateString, ValidateIf } from 'class-validator';
+import { IsEnum, IsOptional, IsDateString, ValidateIf, IsString } from 'class-validator';
 import { TwitchBitsCategory } from '@prisma/client';
 
 export class CreateTwitchBitsGiveawayDto {
@@ -21,6 +21,15 @@ export class CreateTwitchBitsGiveawayDto {
   @IsOptional()
   @IsDateString()
   startDate?: string;
+
+  @ApiProperty({
+    description: 'Name of the giveaway (optional - will be auto-generated if not provided)',
+    example: 'Weekly Twitch Bits Giveaway',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  name?: string;
 }
 
 

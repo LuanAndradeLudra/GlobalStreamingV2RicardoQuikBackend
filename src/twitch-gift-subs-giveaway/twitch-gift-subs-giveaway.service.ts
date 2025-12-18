@@ -115,8 +115,8 @@ export class TwitchGiftSubsGiveawayService {
    * Note: Participants should be synced separately via syncParticipants endpoint (called from frontend)
    */
   async create(userId: string, dto: CreateTwitchGiftSubsGiveawayDto) {
-    // Generate name automatically
-    const name = this.generateGiveawayName(dto.category);
+    // Use provided name or generate automatically
+    const name = dto.name || this.generateGiveawayName(dto.category);
 
     // Create giveaway
     const giveaway = await (this.prisma as any).twitchGiftSubsGiveaway.create({

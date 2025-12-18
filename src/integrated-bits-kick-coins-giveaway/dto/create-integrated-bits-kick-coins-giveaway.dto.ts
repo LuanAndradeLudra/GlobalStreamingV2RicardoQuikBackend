@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum } from 'class-validator';
+import { IsEnum, IsString, IsOptional } from 'class-validator';
 import { IntegratedBitsKickCoinsCategory } from '@prisma/client';
 
 export class CreateIntegratedBitsKickCoinsGiveawayDto {
@@ -10,6 +10,15 @@ export class CreateIntegratedBitsKickCoinsGiveawayDto {
   })
   @IsEnum(IntegratedBitsKickCoinsCategory)
   category: IntegratedBitsKickCoinsCategory;
+
+  @ApiProperty({
+    description: 'Name of the giveaway (optional - will be auto-generated if not provided)',
+    example: 'Weekly Bits & Kick Coins Giveaway',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  name?: string;
 }
 
 

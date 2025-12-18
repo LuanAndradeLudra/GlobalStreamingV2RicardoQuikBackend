@@ -1,6 +1,15 @@
-// Update DTO is not needed anymore since we don't allow updates
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsOptional } from 'class-validator';
+
 export class UpdateTwitchBitsGiveawayDto {
-  // Empty - no updates allowed
+  @ApiProperty({
+    description: 'Name of the giveaway',
+    example: 'Weekly Twitch Bits Giveaway',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  name?: string;
 }
 
 

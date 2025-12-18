@@ -132,8 +132,8 @@ export class TwitchBitsGiveawayService {
       }
     }
 
-    // Generate name automatically
-    const name = this.generateGiveawayName(
+    // Use provided name or generate automatically
+    const name = dto.name || this.generateGiveawayName(
       dto.category,
       dto.startDate ? new Date(dto.startDate) : undefined,
     );
