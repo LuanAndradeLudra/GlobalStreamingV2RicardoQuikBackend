@@ -19,6 +19,7 @@ import { DrawResponseDto } from '../giveaway/dto/draw-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User, UserRole } from '@prisma/client';
 
@@ -57,6 +58,38 @@ export class KickGiftSubsGiveawayController {
     @Body() dto: CreateKickGiftSubsGiveawayDto,
   ) {
     return this.kickGiftSubsGiveawayService.create(user.id, dto);
+  }
+
+  @Get('public')
+  @Public()
+  @ApiOperation({
+    summary: 'List all Kick Gift Subs giveaways (public)',
+    description: 'Returns all Kick Gift Subs giveaways. Public endpoint, no authentication required.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Kick Gift Subs Giveaways retrieved successfully',
+  })
+  async findAllPublic() {
+    return this.kickGiftSubsGiveawayService.findAllPublic();
+  }
+
+  @Get('public/:id')
+  @Public()
+  @ApiOperation({
+    summary: 'Get Kick Gift Subs giveaway details (public)',
+    description: 'Returns details of a specific Kick Gift Subs giveaway including all participants. Public endpoint, no authentication required.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Kick Gift Subs Giveaway retrieved successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Kick Gift Subs Giveaway not found',
+  })
+  async findOnePublic(@Param('id') id: string) {
+    return this.kickGiftSubsGiveawayService.findOnePublic(id);
   }
 
   @Get()
@@ -161,6 +194,7 @@ export class KickGiftSubsGiveawayController {
     return this.kickGiftSubsGiveawayService.draw(user.id, id);
   }
 }
+
 
 
 

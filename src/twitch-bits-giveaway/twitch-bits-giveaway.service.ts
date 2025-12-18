@@ -71,6 +71,54 @@ export class TwitchBitsGiveawayService {
   }
 
   /**
+   * Get all Twitch Bits giveaways (public endpoint - no user filter)
+   */
+  async findAllPublic() {
+    const giveaways = await (this.prisma as any).twitchBitsGiveaway.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        participants: {
+          orderBy: { createdAt: 'asc' },
+        },
+        winners: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            winnerParticipant: true,
+          },
+        },
+      },
+    });
+
+    return giveaways;
+  }
+
+  /**
+   * Get a single Twitch Bits giveaway by ID (public endpoint - no user filter)
+   */
+  async findOnePublic(id: string) {
+    const giveaway = await (this.prisma as any).twitchBitsGiveaway.findFirst({
+      where: { id },
+      include: {
+        participants: {
+          orderBy: { createdAt: 'asc' },
+        },
+        winners: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            winnerParticipant: true,
+          },
+        },
+      },
+    });
+
+    if (!giveaway) {
+      throw new NotFoundException(`Twitch Bits Giveaway with ID ${id} not found`);
+    }
+
+    return giveaway;
+  }
+
+  /**
    * Get a single Twitch Bits giveaway by ID
    */
   async findOne(userId: string, id: string) {

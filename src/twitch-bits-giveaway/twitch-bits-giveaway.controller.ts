@@ -19,6 +19,7 @@ import { DrawResponseDto } from '../giveaway/dto/draw-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User, UserRole } from '@prisma/client';
 
@@ -57,6 +58,38 @@ export class TwitchBitsGiveawayController {
     @Body() dto: CreateTwitchBitsGiveawayDto,
   ) {
     return this.twitchBitsGiveawayService.create(user.id, dto);
+  }
+
+  @Get('public')
+  @Public()
+  @ApiOperation({
+    summary: 'List all Twitch Bits giveaways (public)',
+    description: 'Returns all Twitch Bits giveaways. Public endpoint, no authentication required.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Twitch Bits Giveaways retrieved successfully',
+  })
+  async findAllPublic() {
+    return this.twitchBitsGiveawayService.findAllPublic();
+  }
+
+  @Get('public/:id')
+  @Public()
+  @ApiOperation({
+    summary: 'Get Twitch Bits giveaway details (public)',
+    description: 'Returns details of a specific Twitch Bits giveaway including all participants. Public endpoint, no authentication required.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Twitch Bits Giveaway retrieved successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Twitch Bits Giveaway not found',
+  })
+  async findOnePublic(@Param('id') id: string) {
+    return this.twitchBitsGiveawayService.findOnePublic(id);
   }
 
   @Get()
@@ -161,6 +194,7 @@ export class TwitchBitsGiveawayController {
     return this.twitchBitsGiveawayService.draw(user.id, id);
   }
 }
+
 
 
 

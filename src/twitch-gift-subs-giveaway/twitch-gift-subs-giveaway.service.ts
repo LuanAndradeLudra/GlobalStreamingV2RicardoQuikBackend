@@ -36,6 +36,54 @@ export class TwitchGiftSubsGiveawayService {
   ) {}
 
   /**
+   * Get all Twitch Gift Subs giveaways (public endpoint - no user filter)
+   */
+  async findAllPublic() {
+    const giveaways = await (this.prisma as any).twitchGiftSubsGiveaway.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        participants: {
+          orderBy: { createdAt: 'asc' },
+        },
+        winners: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            winnerParticipant: true,
+          },
+        },
+      },
+    });
+
+    return giveaways;
+  }
+
+  /**
+   * Get a single Twitch Gift Subs giveaway by ID (public endpoint - no user filter)
+   */
+  async findOnePublic(id: string) {
+    const giveaway = await (this.prisma as any).twitchGiftSubsGiveaway.findFirst({
+      where: { id },
+      include: {
+        participants: {
+          orderBy: { createdAt: 'asc' },
+        },
+        winners: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            winnerParticipant: true,
+          },
+        },
+      },
+    });
+
+    if (!giveaway) {
+      throw new NotFoundException(`Twitch Gift Subs Giveaway with ID ${id} not found`);
+    }
+
+    return giveaway;
+  }
+
+  /**
    * Get all Twitch Gift Subs giveaways for a user (without participants and winners for performance)
    */
   async findAll(userId: string) {
@@ -660,6 +708,7 @@ export class TwitchGiftSubsGiveawayService {
     throw new BadRequestException(`Could not find winner for ticket index ${ticketIndex}`);
   }
 }
+
 
 
 

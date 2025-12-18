@@ -44,6 +44,54 @@ export class KickCoinsGiveawayService {
   ) {}
 
   /**
+   * Get all Kick Coins giveaways (public endpoint - no user filter)
+   */
+  async findAllPublic() {
+    const giveaways = await (this.prisma as any).kickCoinsGiveaway.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        participants: {
+          orderBy: { createdAt: 'asc' },
+        },
+        winners: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            winnerParticipant: true,
+          },
+        },
+      },
+    });
+
+    return giveaways;
+  }
+
+  /**
+   * Get a single Kick Coins giveaway by ID (public endpoint - no user filter)
+   */
+  async findOnePublic(id: string) {
+    const giveaway = await (this.prisma as any).kickCoinsGiveaway.findFirst({
+      where: { id },
+      include: {
+        participants: {
+          orderBy: { createdAt: 'asc' },
+        },
+        winners: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            winnerParticipant: true,
+          },
+        },
+      },
+    });
+
+    if (!giveaway) {
+      throw new NotFoundException(`Kick Coins Giveaway with ID ${id} not found`);
+    }
+
+    return giveaway;
+  }
+
+  /**
    * Get all Kick Coins giveaways for a user (without participants and winners for performance)
    */
   async findAll(userId: string) {

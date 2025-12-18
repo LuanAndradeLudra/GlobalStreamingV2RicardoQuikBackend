@@ -16,6 +16,7 @@ import { SyncIntegratedParticipantsDto } from './dto/sync-participants.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('integrated-bits-kick-coins-giveaways')
@@ -35,6 +36,20 @@ export class IntegratedBitsKickCoinsGiveawayController {
     @Body() createDto: CreateIntegratedBitsKickCoinsGiveawayDto,
   ) {
     return this.integratedBitsKickCoinsGiveawayService.create(userId, createDto);
+  }
+
+  @Get('public')
+  @Public()
+  @ApiOperation({ summary: 'Get all integrated bits + kick coins giveaways (public)' })
+  findAllPublic() {
+    return this.integratedBitsKickCoinsGiveawayService.findAllPublic();
+  }
+
+  @Get('public/:id')
+  @Public()
+  @ApiOperation({ summary: 'Get a single integrated bits + kick coins giveaway by ID (public)' })
+  findOnePublic(@Param('id') id: string) {
+    return this.integratedBitsKickCoinsGiveawayService.findOnePublic(id);
   }
 
   @Get()
@@ -86,6 +101,7 @@ export class IntegratedBitsKickCoinsGiveawayController {
     return this.integratedBitsKickCoinsGiveawayService.draw(userId, id);
   }
 }
+
 
 
 

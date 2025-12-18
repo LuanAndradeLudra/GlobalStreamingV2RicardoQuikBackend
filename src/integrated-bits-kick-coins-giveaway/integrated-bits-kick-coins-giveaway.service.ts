@@ -55,6 +55,54 @@ export class IntegratedBitsKickCoinsGiveawayService {
   ) {}
 
   /**
+   * Get all Integrated Bits + Kick Coins giveaways (public endpoint - no user filter)
+   */
+  async findAllPublic() {
+    const giveaways = await (this.prisma as any).integratedBitsKickCoinsGiveaway.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        participants: {
+          orderBy: { createdAt: 'asc' },
+        },
+        winners: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            winnerParticipant: true,
+          },
+        },
+      },
+    });
+
+    return giveaways;
+  }
+
+  /**
+   * Get a single Integrated Bits + Kick Coins giveaway by ID (public endpoint - no user filter)
+   */
+  async findOnePublic(id: string) {
+    const giveaway = await (this.prisma as any).integratedBitsKickCoinsGiveaway.findFirst({
+      where: { id },
+      include: {
+        participants: {
+          orderBy: { createdAt: 'asc' },
+        },
+        winners: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            winnerParticipant: true,
+          },
+        },
+      },
+    });
+
+    if (!giveaway) {
+      throw new NotFoundException(`Integrated Bits + Kick Coins Giveaway with ID ${id} not found`);
+    }
+
+    return giveaway;
+  }
+
+  /**
    * Get all Integrated Bits + Kick Coins giveaways for a user
    */
   async findAll(userId: string) {
@@ -668,6 +716,7 @@ export class IntegratedBitsKickCoinsGiveawayService {
     throw new BadRequestException(`Could not find winner for ticket index ${ticketIndex}`);
   }
 }
+
 
 
 

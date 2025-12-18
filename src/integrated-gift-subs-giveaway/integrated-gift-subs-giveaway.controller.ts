@@ -15,6 +15,7 @@ import { SyncIntegratedGiftSubsParticipantsDto } from './dto/sync-participants.d
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 
@@ -33,6 +34,20 @@ export class IntegratedGiftSubsGiveawayController {
     @Body() createDto: CreateIntegratedGiftSubsGiveawayDto,
   ) {
     return this.service.create(userId, createDto);
+  }
+
+  @Get('public')
+  @Public()
+  @ApiOperation({ summary: 'Get all Integrated Gift Subs giveaways (public)' })
+  findAllPublic() {
+    return this.service.findAllPublic();
+  }
+
+  @Get('public/:id')
+  @Public()
+  @ApiOperation({ summary: 'Get a specific Integrated Gift Subs giveaway (public)' })
+  findOnePublic(@Param('id') id: string) {
+    return this.service.findOnePublic(id);
   }
 
   @Get()
@@ -84,6 +99,7 @@ export class IntegratedGiftSubsGiveawayController {
     return this.service.draw(userId, id);
   }
 }
+
 
 
 

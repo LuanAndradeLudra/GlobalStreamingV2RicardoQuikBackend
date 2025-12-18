@@ -44,6 +44,54 @@ export class IntegratedGiftSubsGiveawayService {
   ) {}
 
   /**
+   * Get all Integrated Gift Subs giveaways (public endpoint - no user filter)
+   */
+  async findAllPublic() {
+    const giveaways = await (this.prisma as any).integratedGiftSubsGiveaway.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        participants: {
+          orderBy: { createdAt: 'asc' },
+        },
+        winners: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            winnerParticipant: true,
+          },
+        },
+      },
+    });
+
+    return giveaways;
+  }
+
+  /**
+   * Get a single Integrated Gift Subs giveaway by ID (public endpoint - no user filter)
+   */
+  async findOnePublic(id: string) {
+    const giveaway = await (this.prisma as any).integratedGiftSubsGiveaway.findFirst({
+      where: { id },
+      include: {
+        participants: {
+          orderBy: { createdAt: 'asc' },
+        },
+        winners: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            winnerParticipant: true,
+          },
+        },
+      },
+    });
+
+    if (!giveaway) {
+      throw new NotFoundException(`Integrated Gift Subs Giveaway with ID ${id} not found`);
+    }
+
+    return giveaway;
+  }
+
+  /**
    * Get all Integrated Gift Subs giveaways for a user
    */
   async findAll(userId: string) {
@@ -572,6 +620,7 @@ GvZqVQmf8NxzGxQJuQ7dCqgEVVGqEz0cEaE0KZVZtjdqcV6ixDHQOJyxLZRWZwAC
     return null;
   }
 }
+
 
 
 
