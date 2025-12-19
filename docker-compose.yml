@@ -33,7 +33,7 @@ services:
     container_name: trully-api
     command: npm run start:dev
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/trullygiveaway?schema=public
+      DATABASE_URL: postgresql://postgres:vF72HBUWL3%29%21@db:5432/trullygiveaway?schema=public
       PORT: 3000
     ports:
       - "3000:3000"
