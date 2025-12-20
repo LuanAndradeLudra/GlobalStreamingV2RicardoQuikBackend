@@ -1440,16 +1440,40 @@ export class GiveawayService {
 
   /**
    * Publica sorteio ativo no Redis para processamento de webhooks
+   * Busca channelIds das connectedAccounts para cada plataforma
    */
   private async publishGiveawayToRedis(giveaway: any): Promise<void> {
     this.logger.log(`📤 Publishing giveaway to Redis: ${giveaway.id}`);
+
+    const platforms = giveaway.platforms as ConnectedPlatform[];
+
+    // Busca connectedAccounts do usuário para obter channelIds
+    const connectedAccounts = await this.prisma.connectedAccount.findMany({
+      where: {
+        userId: giveaway.userId,
+        platform: { in: platforms },
+      },
+    });
+
+    // Cria map de platform -> channelId
+    const channelIds: Record<ConnectedPlatform, string> = {} as Record<ConnectedPlatform, string>;
+    for (const account of connectedAccounts) {
+      channelIds[account.platform] = account.externalChannelId;
+    }
+
+    // Verifica se todos os channelIds foram encontrados
+    const missingPlatforms = platforms.filter(p => !channelIds[p]);
+    if (missingPlatforms.length > 0) {
+      this.logger.warn(`⚠️ Missing channelIds for platforms: ${missingPlatforms.join(', ')}`);
+    }
 
     await this.redisService.publishActiveGiveaway({
       streamGiveawayId: giveaway.id,
       userId: giveaway.userId,
       keyword: giveaway.keyword,
-      platforms: giveaway.platforms as ConnectedPlatform[],
+      platforms,
       allowedRoles: giveaway.allowedRoles as string[],
+      channelIds,
       donationConfigs: giveaway.donationConfigs?.map((config: any) => ({
         platform: config.platform,
         unitType: config.unitType,
@@ -1462,15 +1486,32 @@ export class GiveawayService {
 
   /**
    * Remove sorteio ativo do Redis
+   * Busca channelIds das connectedAccounts para cada plataforma
    */
   private async removeGiveawayFromRedis(giveaway: any): Promise<void> {
     this.logger.log(`📥 Removing giveaway from Redis: ${giveaway.id}`);
 
+    const platforms = giveaway.platforms as ConnectedPlatform[];
+
+    // Busca connectedAccounts do usuário para obter channelIds
+    const connectedAccounts = await this.prisma.connectedAccount.findMany({
+      where: {
+        userId: giveaway.userId,
+        platform: { in: platforms },
+      },
+    });
+
+    // Cria map de platform -> channelId
+    const channelIds: Record<ConnectedPlatform, string> = {} as Record<ConnectedPlatform, string>;
+    for (const account of connectedAccounts) {
+      channelIds[account.platform] = account.externalChannelId;
+    }
+
     await this.redisService.removeActiveGiveaway({
       streamGiveawayId: giveaway.id,
-      userId: giveaway.userId,
       keyword: giveaway.keyword,
-      platforms: giveaway.platforms as ConnectedPlatform[],
+      platforms,
+      channelIds,
     });
 
     this.logger.log(`✅ Giveaway removed from Redis: ${giveaway.id}`);

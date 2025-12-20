@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { StreamGiveawayRedisService } from '../stream-giveaway-redis/stream-giveaway-redis.service';
-import { RedisService } from '../redis/redis.service';
 import { RealtimeGateway } from '../realtime-gateway/realtime-gateway.gateway';
 import { KickService } from '../kick/kick.service';
 import { GiveawayService } from '../giveaway/giveaway.service';
@@ -24,7 +23,6 @@ twIDAQAB
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: StreamGiveawayRedisService,
-    private readonly redis: RedisService,
     private readonly realtimeGateway: RealtimeGateway,
     private readonly kickService: KickService,
     private readonly giveawayService: GiveawayService,
@@ -114,29 +112,38 @@ twIDAQAB
         return;
       }
 
-      // 1️⃣ Search for active giveaway by keyword in Redis
-      // Since we don't know which admin user has the giveaway, we need to search
-      // all active KICK giveaways and find one matching the keyword
-      const redisPattern = `giveaway:active:*:KICK:*`;
-      const keys = await this.redis.keys(redisPattern);
+      // 1️⃣ Find connected account to get channelId
+      // Kick webhooks don't include channelId directly, so we need to find it
+      // by searching all KICK connected accounts and matching with active giveaways
+      const connectedAccounts = await this.prisma.connectedAccount.findMany({
+        where: {
+          platform: ConnectedPlatform.KICK,
+        },
+      });
 
+      if (connectedAccounts.length === 0) {
+        return;
+      }
+
+      // 2️⃣ Search for active giveaway by keyword in Redis using channelId
+      // Try each connected account's channelId until we find a matching giveaway
       let activeGiveaway: any = null;
       let adminUserId: string | null = null;
 
-      // Check each key to find one with matching keyword
-      for (const key of keys) {
-        const data = await this.redis.get(key);
-        if (data) {
-          const giveaway = JSON.parse(data);
-          const keyword = giveaway.keyword?.toLowerCase();
-          const messageLower = message.toLowerCase();
+      for (const account of connectedAccounts) {
+        const channelId = account.externalChannelId;
+        
+        // Use the new Redis service method with channelId
+        const giveaway = await this.redisService.findActiveGiveawayByKeyword(
+          ConnectedPlatform.KICK,
+          channelId,
+          message,
+        );
 
-          // Check if message contains the keyword
-          if (keyword && messageLower.includes(keyword)) {
-            activeGiveaway = giveaway;
-            adminUserId = giveaway.userId;
-            break;
-          }
+        if (giveaway) {
+          activeGiveaway = giveaway;
+          adminUserId = account.userId;
+          break;
         }
       }
 

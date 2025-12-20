@@ -127,10 +127,11 @@ export class TwitchWebhooksService {
 
       const adminUserId = connectedAccount.userId;
 
-      // Busca sorteio ativo por palavra-chave na mensagem
+      // Busca sorteio ativo por palavra-chave na mensagem usando channelId
+      // channelId = broadcasterUserId (Twitch channel ID)
       const activeGiveaway = await this.redisService.findActiveGiveawayByKeyword(
-        adminUserId,
         ConnectedPlatform.TWITCH,
+        broadcasterUserId, // channelId
         messageText,
       );
 

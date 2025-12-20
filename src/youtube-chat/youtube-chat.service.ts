@@ -365,10 +365,11 @@ export class YouTubeChatService {
 
       const adminUserId = connectedAccount.userId;
 
-      // 2️⃣ Search for active giveaway by keyword in Redis (same as Twitch/Kick)
+      // 2️⃣ Search for active giveaway by keyword in Redis using channelId
+      // channelId = YouTube channel ID (já temos no parâmetro)
       const activeGiveaway = await this.redisService.findActiveGiveawayByKeyword(
-        adminUserId,
         ConnectedPlatform.YOUTUBE,
+        channelId, // channelId
         messageText,
       );
 

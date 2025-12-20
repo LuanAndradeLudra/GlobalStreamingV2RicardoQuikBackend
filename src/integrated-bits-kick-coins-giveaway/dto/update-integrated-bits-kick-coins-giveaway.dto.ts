@@ -23,3 +23,4 @@ export class UpdateIntegratedBitsKickCoinsGiveawayDto extends PartialType(
 
 
 
+

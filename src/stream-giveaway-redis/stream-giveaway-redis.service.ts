@@ -11,6 +11,7 @@ export interface ActiveGiveawayData {
   keyword: string;
   platforms: ConnectedPlatform[];
   allowedRoles: string[];
+  channelIds: Record<ConnectedPlatform, string>; // Map de platform -> externalChannelId
   donationConfigs: Array<{
     platform: ConnectedPlatform;
     unitType: string;
@@ -22,9 +23,12 @@ export interface ActiveGiveawayData {
  * Service para gerenciar sorteios ativos no Redis
  * 
  * Estrutura de chaves no Redis:
- * - `giveaway:active:{userId}:{platform}:keyword` -> JSON com dados do sorteio
+ * - `giveaway:active:{platform}:{channelId}:{keyword}` -> JSON com dados do sorteio
  * - `giveaway:participants:{streamGiveawayId}:{platform}:{externalUserId}` -> SET de métodos já usados
  * - `giveaway:metrics:{streamGiveawayId}` -> HASH com contadores (total_participants, etc)
+ * 
+ * Nota: Usamos channelId ao invés de userId porque o canal define onde a mensagem aconteceu,
+ * tornando o lookup mais consistente e direto.
  */
 @Injectable()
 export class StreamGiveawayRedisService {
@@ -37,25 +41,32 @@ export class StreamGiveawayRedisService {
 
   /**
    * Publica um sorteio ativo no Redis
-   * Cria chaves para cada plataforma configurada
+   * Cria chaves para cada plataforma configurada usando channelId
    */
   async publishActiveGiveaway(data: ActiveGiveawayData): Promise<void> {
-    const { streamGiveawayId, userId, keyword, platforms, allowedRoles, donationConfigs } = data;
+    const { streamGiveawayId, userId, keyword, platforms, allowedRoles, donationConfigs, channelIds } = data;
 
     // Normaliza keyword (lowercase, trim)
     const normalizedKeyword = keyword.toLowerCase().trim();
 
     this.logger.log(`📤 Publishing active giveaway: ${streamGiveawayId} with keyword: "${normalizedKeyword}"`);
 
-    // Cria uma chave para cada plataforma
+    // Cria uma chave para cada plataforma usando channelId
     for (const platform of platforms) {
-      const key = this.getGiveawayKey(userId, platform, normalizedKeyword);
+      const channelId = channelIds[platform];
+      if (!channelId) {
+        this.logger.warn(`⚠️ No channelId found for platform ${platform}, skipping...`);
+        continue;
+      }
+
+      const key = this.getGiveawayKey(platform, channelId, normalizedKeyword);
       const value = JSON.stringify({
         streamGiveawayId,
         userId,
         keyword: normalizedKeyword,
         platform,
         allowedRoles,
+        channelId,
         donationConfigs: donationConfigs.filter(c => c.platform === platform),
       });
 
@@ -72,18 +83,24 @@ export class StreamGiveawayRedisService {
    */
   async removeActiveGiveaway(data: {
     streamGiveawayId: string;
-    userId: string;
     keyword: string;
     platforms: ConnectedPlatform[];
+    channelIds: Record<ConnectedPlatform, string>;
   }): Promise<void> {
-    const { streamGiveawayId, userId, keyword, platforms } = data;
+    const { streamGiveawayId, keyword, platforms, channelIds } = data;
     const normalizedKeyword = keyword.toLowerCase().trim();
 
     this.logger.log(`📥 Removing active giveaway: ${streamGiveawayId}`);
 
-    // Remove chaves de cada plataforma
+    // Remove chaves de cada plataforma usando channelId
     for (const platform of platforms) {
-      const key = this.getGiveawayKey(userId, platform, normalizedKeyword);
+      const channelId = channelIds[platform];
+      if (!channelId) {
+        this.logger.warn(`⚠️ No channelId found for platform ${platform}, skipping removal...`);
+        continue;
+      }
+
+      const key = this.getGiveawayKey(platform, channelId, normalizedKeyword);
       await this.redis.del(key);
       this.logger.log(`🗑️ Giveaway key removed: ${key}`);
     }
@@ -120,42 +137,62 @@ export class StreamGiveawayRedisService {
   }
 
   /**
-   * Busca sorteio ativo por palavra-chave e plataforma
+   * Busca sorteio ativo por palavra-chave, plataforma e channelId
    * Retorna null se não encontrado
+   * 
+   * Usa channelId + platform para lookup direto e consistente
    */
   async findActiveGiveawayByKeyword(
-    userId: string,
     platform: ConnectedPlatform,
+    channelId: string,
     message: string,
   ): Promise<ActiveGiveawayData | null> {
-    // Normaliza mensagem (lowercase, trim, tokeniza)
+    // Normaliza mensagem (lowercase, trim)
     const normalizedMessage = message.toLowerCase().trim();
-    const words = normalizedMessage.split(/\s+/);
 
-    this.logger.log(`🔍 Searching for giveaway in message: "${normalizedMessage}"`);
+    this.logger.log(`🔍 Searching for giveaway in message: "${normalizedMessage}" (platform: ${platform}, channelId: ${channelId})`);
 
-    // Busca todas as chaves ativas para este usuário e plataforma
-    const pattern = `${this.GIVEAWAY_PREFIX}:${userId}:${platform}:*`;
+    // Busca chaves para este canal específico
+    const pattern = `${this.GIVEAWAY_PREFIX}:${platform}:${channelId}:*`;
     const keys = await this.redis.keys(pattern);
 
     this.logger.log(`📋 Found ${keys.length} active giveaway keys for pattern: ${pattern}`);
 
-    // Verifica cada chave para match de keyword
+    const match = await this.findMatchingGiveaway(keys, normalizedMessage);
+    if (match) {
+      return match;
+    }
+
+    this.logger.log(`❌ No giveaway match found for message: "${normalizedMessage}"`);
+    return null;
+  }
+
+  /**
+   * Helper method to find matching giveaway from a list of keys
+   * Uses substring matching (like Kick) instead of exact word matching
+   */
+  private async findMatchingGiveaway(
+    keys: string[],
+    normalizedMessage: string,
+  ): Promise<ActiveGiveawayData | null> {
     for (const key of keys) {
       const data = await this.redis.get(key);
       if (!data) continue;
 
       const giveaway = JSON.parse(data);
-      const keyword = giveaway.keyword.toLowerCase().trim();
+      const keyword = giveaway.keyword?.toLowerCase().trim();
 
-      // Verifica se a keyword está presente nas palavras da mensagem
-      if (words.includes(keyword)) {
+      if (!keyword) continue;
+
+      // Usa substring matching (como Kick) para suportar casos como:
+      // - Mensagem: "!sorteiovip" → Keyword: "!sorteio" ✅
+      // - Mensagem: "digite !sorteio" → Keyword: "!sorteio" ✅
+      if (normalizedMessage.includes(keyword)) {
         this.logger.log(`✅ Match found! Keyword: "${keyword}" in message: "${normalizedMessage}"`);
         return giveaway;
       }
     }
 
-    this.logger.log(`❌ No giveaway match found for message: "${normalizedMessage}"`);
     return null;
   }
 
@@ -227,10 +264,11 @@ export class StreamGiveawayRedisService {
   }
 
   /**
-   * Gera chave para sorteio ativo
+   * Gera chave para sorteio ativo usando platform + channelId
+   * Formato: giveaway:active:{platform}:{channelId}:{keyword}
    */
-  private getGiveawayKey(userId: string, platform: ConnectedPlatform, keyword: string): string {
-    return `${this.GIVEAWAY_PREFIX}:${userId}:${platform}:${keyword}`;
+  private getGiveawayKey(platform: ConnectedPlatform, channelId: string, keyword: string): string {
+    return `${this.GIVEAWAY_PREFIX}:${platform}:${channelId}:${keyword}`;
   }
 
   /**
@@ -251,6 +289,7 @@ export class StreamGiveawayRedisService {
     return `${this.METRICS_PREFIX}:${streamGiveawayId}`;
   }
 }
+
 
 
 
