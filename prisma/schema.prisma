@@ -126,7 +126,7 @@ model ConnectedAccount {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([platform, externalChannelId])
+  @@unique([userId, platform, externalChannelId])
 }
 
 // Global ticket rules - base status roles for all stream giveaways

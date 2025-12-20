@@ -112,12 +112,10 @@ export class TwitchWebhooksService {
       }
 
       // Mapeia broadcasterUserId (Twitch) → userId (nosso sistema)
-      const connectedAccount = await this.prisma.connectedAccount.findUnique({
+      const connectedAccount = await this.prisma.connectedAccount.findFirst({
         where: {
-          platform_externalChannelId: {
-            platform: ConnectedPlatform.TWITCH,
-            externalChannelId: broadcasterUserId,
-          },
+          platform: ConnectedPlatform.TWITCH,
+          externalChannelId: broadcasterUserId,
         },
       });
 

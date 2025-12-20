@@ -23,7 +23,8 @@ export class ConnectedAccountsService {
 
     return this.prisma.connectedAccount.upsert({
       where: {
-        platform_externalChannelId: {
+        userId_platform_externalChannelId: {
+          userId,
           platform,
           externalChannelId,
         },
@@ -31,7 +32,6 @@ export class ConnectedAccountsService {
       update: {
         ...accountData,
         expiresAt: expiresAtDate,
-        userId,
         updatedAt: new Date(),
       },
       create: {
