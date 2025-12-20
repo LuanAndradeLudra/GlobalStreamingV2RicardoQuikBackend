@@ -128,7 +128,6 @@ twIDAQAB
       // 2️⃣ Search for active giveaway by keyword in Redis using channelId
       // Try each connected account's channelId until we find a matching giveaway
       let activeGiveaway: any = null;
-      let adminUserId: string | null = null;
 
       for (const account of connectedAccounts) {
         const channelId = account.externalChannelId;
@@ -142,14 +141,16 @@ twIDAQAB
 
         if (giveaway) {
           activeGiveaway = giveaway;
-          adminUserId = account.userId;
           break;
         }
       }
 
-      if (!activeGiveaway || !adminUserId) {
+      if (!activeGiveaway) {
         return;
       }
+
+      // adminUserId vem do activeGiveaway.userId (salvo no Redis)
+      const adminUserId = activeGiveaway.userId;
 
       // 3️⃣ Check if user is subscriber (Kick doesn't have public API for this yet)
       // For now, we'll assume NON_SUB unless we can detect from identity.badges
@@ -261,7 +262,7 @@ twIDAQAB
         if (!isKickCoinsDuplicate) {
           
           const kickCoins = await this.getKickCoinsForUser(
-            adminUserId,
+            activeGiveaway.userId,
             parseInt(userId),
             kickCoinsConfig.donationWindow as DonationWindow,
           );
@@ -341,7 +342,7 @@ twIDAQAB
 
         if (!isGiftSubDuplicate) {
           const giftSubs = await this.getGiftSubsForUser(
-            adminUserId,
+            activeGiveaway.userId,
             parseInt(userId),
             username,
             giftSubConfig.donationWindow as DonationWindow,
