@@ -1059,6 +1059,53 @@ export class ConnectedAccountsController {
     }
   }
 
+  @Get('youtube/polling-status')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-youtube')
+  @ApiOperation({
+    summary: 'Get YouTube Live Chat polling status',
+    description: 'Checks if YouTube chat polling is currently active',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Polling status retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        isActive: { type: 'boolean' },
+        channelId: { type: 'string', nullable: true },
+      },
+    },
+  })
+  async getYouTubePollingStatus(@CurrentUser() user: User): Promise<any> {
+    try {
+      // Find YouTube connected account
+      const accounts = await this.connectedAccountsService.findAll(user.id);
+      const youtubeAccount = accounts.find((acc) => acc.platform === 'YOUTUBE');
+
+      if (!youtubeAccount) {
+        return {
+          isActive: false,
+          channelId: null,
+        };
+      }
+
+      // Check if polling is active
+      const isActive = this.youtubeChatService.isPollingActive(youtubeAccount.externalChannelId);
+
+      return {
+        isActive,
+        channelId: youtubeAccount.externalChannelId,
+      };
+    } catch (error: unknown) {
+      console.error('Error checking YouTube polling status:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`Failed to check polling status: ${errorMessage}`);
+    }
+  }
+
   @Post('twitch/refresh-token')
   @UseGuards(JwtAuthGuard)
   @Roles(UserRole.ADMIN)
