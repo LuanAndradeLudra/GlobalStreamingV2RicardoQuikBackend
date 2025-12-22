@@ -44,7 +44,7 @@ export class AuthPublicController {
     const token = await this.authService.generateJwt(user);
 
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
-    const redirectUrl = `${frontendUrl}/auth/callback?token=${token}`;
+    const redirectUrl = `${frontendUrl}/oauth/callback?token=${token}`;
 
     res.redirect(redirectUrl);
   }
