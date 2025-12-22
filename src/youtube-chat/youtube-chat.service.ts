@@ -139,7 +139,7 @@ export class YouTubeChatService {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
     const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
     const backendUrl = this.configService.get<string>('BACKEND_URL') || 'http://localhost:4000';
-    const redirectUri = `${backendUrl.replace(/\/$/, '')}/api/connected-accounts/oauth/youtube/callback`;
+    const redirectUri = `${backendUrl.replace(/\/$/, '')}/connected-accounts/oauth/youtube/callback`;
 
     if (!clientId || !clientSecret) {
       throw new Error('YouTube OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');

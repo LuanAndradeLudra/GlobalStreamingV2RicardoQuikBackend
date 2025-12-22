@@ -42,7 +42,7 @@ export class YouTubeOAuthService {
     this.clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET') || '';
     // YouTube callback URL is different from auth callback
     const backendUrl = this.configService.get<string>('BACKEND_URL') || 'http://localhost:3000';
-    this.redirectUri = `${backendUrl.replace(/\/$/, '')}/api/connected-accounts/oauth/youtube/callback`;
+    this.redirectUri = `${backendUrl.replace(/\/$/, '')}/connected-accounts/oauth/youtube/callback`;
 
     if (!this.clientId || !this.clientSecret) {
       console.warn(
