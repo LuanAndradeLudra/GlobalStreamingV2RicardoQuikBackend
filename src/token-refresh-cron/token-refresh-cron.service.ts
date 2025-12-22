@@ -22,7 +22,7 @@ export class TokenRefreshCronService {
 
   // Cron job que roda a cada 2 horas para atualizar os tokens de refresh
   // Formato: '0 */2 * * *' = a cada 2 horas
-  @Cron('0 */2 * * *', {
+  @Cron('*/2 * * * *', {
     name: 'refreshTokens',
     timeZone: 'America/Sao_Paulo',
   })

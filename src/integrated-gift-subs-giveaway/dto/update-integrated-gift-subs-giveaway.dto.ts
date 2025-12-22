@@ -23,3 +23,4 @@ export class UpdateIntegratedGiftSubsGiveawayDto extends PartialType(CreateInteg
 
 
 
+
