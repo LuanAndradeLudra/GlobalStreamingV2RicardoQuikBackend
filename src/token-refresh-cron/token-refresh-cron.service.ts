@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ConnectedAccountsService } from '../connected-accounts/connected-accounts.service';
 import { KickOAuthService } from '../connected-accounts/services/kick-oauth.service';
 import { TwitchOAuthService } from '../connected-accounts/services/twitch-oauth.service';
+import { YouTubeOAuthService } from '../connected-accounts/services/youtube-oauth.service';
 import { CreateConnectedAccountDto } from '../connected-accounts/dto/create-connected-account.dto';
 import { ConnectedPlatform, UserRole, ConnectedAccount } from '@prisma/client';
 
@@ -16,6 +17,7 @@ export class TokenRefreshCronService {
     private readonly connectedAccountsService: ConnectedAccountsService,
     private readonly kickOAuthService: KickOAuthService,
     private readonly twitchOAuthService: TwitchOAuthService,
+    private readonly youtubeOAuthService: YouTubeOAuthService,
   ) {}
 
   // Cron job que roda a cada 2 horas para atualizar os tokens de refresh
@@ -83,6 +85,8 @@ export class TokenRefreshCronService {
       tokenResponse = await this.kickOAuthService.refreshAccessToken(account.refreshToken);
     } else if (account.platform === ConnectedPlatform.TWITCH) {
       tokenResponse = await this.twitchOAuthService.refreshAccessToken(account.refreshToken);
+    } else if (account.platform === ConnectedPlatform.YOUTUBE) {
+      tokenResponse = await this.youtubeOAuthService.refreshAccessToken(account.refreshToken);
     } else {
       this.logger.warn(
         `Plataforma ${account.platform} nao suporta refresh automatico, pulando...`,
@@ -112,6 +116,8 @@ export class TokenRefreshCronService {
     await this.connectedAccountsService.createOrUpdate(userId, createDto);
   }
 }
+
+
 
 
 

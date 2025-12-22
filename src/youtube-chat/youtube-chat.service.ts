@@ -74,10 +74,8 @@ export class YouTubeChatService {
   /**
    * Get liveChatId for a channel's active live stream
    */
-  async getLiveChatId(channelId: string, accessToken: string): Promise<string | null> {
+  async getLiveChatId(oauth2Client: any, channelId: string): Promise<string | null> {
     try {
-      const oauth2Client = new google.auth.OAuth2();
-      oauth2Client.setCredentials({ access_token: accessToken });
       const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
 
       // Get broadcasts for the authenticated user
@@ -175,7 +173,7 @@ export class YouTubeChatService {
     // Get liveChatId (optional - will retry in polling loop if not found)
     let liveChatId: string | null = null;
     try {
-      liveChatId = await this.getLiveChatId(channelId, accessToken);
+      liveChatId = await this.getLiveChatId(oauth2Client, channelId);
       if (!liveChatId) {
         this.logger.warn(`⚠️ [YouTube] No active live stream for channel ${channelId}, worker will retry`);
       }
@@ -221,12 +219,13 @@ export class YouTubeChatService {
         if (!worker.liveChatId) {
           this.logger.log(`🔍 [YouTube] No liveChatId found, attempting to get it for channel ${worker.channelId}`);
           try {
+            // Refresh token if needed before making the API call
             const tokenResponse = await worker.oauth2Client.getAccessToken();
-            const accessToken = tokenResponse.token;
-            if (!accessToken) {
+            if (!tokenResponse.token) {
               throw new Error('Failed to get access token');
             }
-            worker.liveChatId = await this.getLiveChatId(worker.channelId, accessToken);
+            
+            worker.liveChatId = await this.getLiveChatId(worker.oauth2Client, worker.channelId);
             if (!worker.liveChatId) {
               // Retry in 30 seconds if no live stream
               this.logger.warn(`⏳ [YouTube] No active live stream found, retrying in 30 seconds...`);
