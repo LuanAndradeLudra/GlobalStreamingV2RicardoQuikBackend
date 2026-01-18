@@ -493,7 +493,7 @@ export class IntegratedGiftSubsGiveawayService {
         listHash,
         randomOrgRandom: randomOrgResult.random,
         randomOrgSignature: randomOrgResult.signature,
-        randomOrgVerificationUrl: this.generateRandomOrgVerificationUrl(randomOrgResult),
+        randomOrgVerificationUrl: this.generateRandomOrgVerificationUrl(randomOrgResult.random, randomOrgResult.signature),
         drawnNumber,
         verified,
       },
@@ -510,9 +510,11 @@ export class IntegratedGiftSubsGiveawayService {
   /**
    * Generate Random.org verification URL
    */
-  private generateRandomOrgVerificationUrl(randomOrgResult: any): string {
-    const serialNumber = randomOrgResult.random.serialNumber;
-    return `https://api.random.org/signatures/form?format=json&serial=${serialNumber}`;
+  private generateRandomOrgVerificationUrl(random: any, signature: string): string {
+    const randomJson = JSON.stringify(random);
+    const randomBase64 = Buffer.from(randomJson).toString('base64');
+    const signatureEncoded = encodeURIComponent(signature);
+    return `https://api.random.org/signatures/form?format=json&random=${randomBase64}&signature=${signatureEncoded}`;
   }
 
   /**
