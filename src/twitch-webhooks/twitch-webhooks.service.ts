@@ -882,6 +882,27 @@ export class TwitchWebhooksService {
         return;
       }
 
+      // ✅ Deduplicação: Verificar se já existe evento com mesmo message_id
+      const messageId = event.message_id;
+      if (messageId) {
+        const existingEvent = await this.prisma.event.findFirst({
+          where: {
+            userId: connectedAccount.userId,
+            platform: ConnectedPlatform.TWITCH,
+            eventType: 'BITS',
+            metadata: {
+              path: ['messageId'],
+              equals: messageId,
+            },
+          },
+        });
+
+        if (existingEvent) {
+          this.logger.warn(`⚠️ [Twitch Power-Up] Duplicate event detected (messageId: ${messageId}), skipping...`);
+          return;
+        }
+      }
+
       // Determina quantidade de bits baseado no tipo de Power-Up
       let estimatedBits = 0;
       let powerUpType = 'unknown';
@@ -917,6 +938,7 @@ export class TwitchWebhooksService {
             broadcasterUserId,
             messageType,
             animationId: animationId || null,
+            messageId: messageId || null, // ✅ Armazenar messageId para deduplicação
             source: 'power_up',
             powerUpType,
             estimated: true,
