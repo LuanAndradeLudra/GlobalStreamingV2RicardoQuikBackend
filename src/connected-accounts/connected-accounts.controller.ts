@@ -643,7 +643,7 @@ export class ConnectedAccountsController {
               webhookUrl,
               webhookSecret,
             );
-            console.log('✅ [Twitch OAuth Callback] Successfully subscribed to EventSub webhook events (chat messages and bits)');
+            console.log('✅ [Twitch OAuth Callback] Successfully subscribed to EventSub webhook events (chat, bits, subs, and gift subs)');
           } else {
             console.warn('⚠️ [Twitch OAuth Callback] TWITCH_WEBHOOK_SECRET not configured. Webhook subscription skipped.');
             console.warn('⚠️ [Twitch OAuth Callback] User can subscribe manually later via /connected-accounts/twitch/subscribe-webhooks');
@@ -745,7 +745,7 @@ export class ConnectedAccountsController {
 
       return {
         success: true,
-        message: 'Successfully subscribed to EventSub webhook events (chat messages and bits)',
+        message: 'Successfully subscribed to EventSub webhook events (chat, bits, subs, and gift subs)',
         data: result,
         webhookUrl,
         note: 'Make sure TWITCH_WEBHOOK_SECRET environment variable matches the secret used when creating the subscription.',

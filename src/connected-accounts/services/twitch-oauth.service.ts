@@ -579,19 +579,73 @@ Original error: ${responseText}`;
   }
 
   /**
-   * Subscribe to all webhook events (chat messages and bits)
+   * Subscribe to channel.subscribe EventSub
+   * This is a convenience method specifically for subscriptions (new subs and renewals)
+   */
+  async subscribeToSubscriptionEvents(
+    broadcasterUserId: string,
+    webhookUrl: string,
+    webhookSecret: string,
+  ): Promise<any> {
+    console.log('🔄 [Twitch EventSub] Subscribing to subscription events...');
+    console.log('📝 [Twitch EventSub] Broadcaster ID:', broadcasterUserId);
+
+    const appAccessToken = await this.getAppAccessToken();
+
+    return this.createEventSubSubscription(
+      appAccessToken,
+      'channel.subscribe',
+      '1',
+      {
+        broadcaster_user_id: broadcasterUserId,
+      },
+      webhookUrl,
+      webhookSecret,
+    );
+  }
+
+  /**
+   * Subscribe to channel.subscription.gift EventSub
+   * This is a convenience method specifically for gift subscriptions (who GAVE the gifts)
+   */
+  async subscribeToGiftSubEvents(
+    broadcasterUserId: string,
+    webhookUrl: string,
+    webhookSecret: string,
+  ): Promise<any> {
+    console.log('🔄 [Twitch EventSub] Subscribing to gift subscription events...');
+    console.log('📝 [Twitch EventSub] Broadcaster ID:', broadcasterUserId);
+
+    const appAccessToken = await this.getAppAccessToken();
+
+    return this.createEventSubSubscription(
+      appAccessToken,
+      'channel.subscription.gift',
+      '1',
+      {
+        broadcaster_user_id: broadcasterUserId,
+      },
+      webhookUrl,
+      webhookSecret,
+    );
+  }
+
+  /**
+   * Subscribe to all webhook events (chat messages, bits, subscriptions, and gift subs)
    */
   async subscribeToAllWebhookEvents(
     broadcasterUserId: string,
     botUserId: string,
     webhookUrl: string,
     webhookSecret: string,
-  ): Promise<{ chatMessages: any; cheerEvents: any }> {
+  ): Promise<{ chatMessages: any; cheerEvents: any; subscriptionEvents: any; giftSubEvents: any }> {
     console.log('🔄 [Twitch EventSub] Subscribing to all webhook events...');
 
     const results = {
       chatMessages: null as any,
       cheerEvents: null as any,
+      subscriptionEvents: null as any,
+      giftSubEvents: null as any,
     };
 
     // Subscribe to chat messages
@@ -619,6 +673,32 @@ Original error: ${responseText}`;
     } catch (error) {
       console.error('❌ [Twitch EventSub] Failed to subscribe to cheer events:', error);
       // Continue even if cheer subscription fails
+    }
+
+    // Subscribe to subscription events
+    try {
+      results.subscriptionEvents = await this.subscribeToSubscriptionEvents(
+        broadcasterUserId,
+        webhookUrl,
+        webhookSecret,
+      );
+      console.log('✅ [Twitch EventSub] Successfully subscribed to subscription events');
+    } catch (error) {
+      console.error('❌ [Twitch EventSub] Failed to subscribe to subscription events:', error);
+      // Continue even if subscription fails
+    }
+
+    // Subscribe to gift sub events
+    try {
+      results.giftSubEvents = await this.subscribeToGiftSubEvents(
+        broadcasterUserId,
+        webhookUrl,
+        webhookSecret,
+      );
+      console.log('✅ [Twitch EventSub] Successfully subscribed to gift sub events');
+    } catch (error) {
+      console.error('❌ [Twitch EventSub] Failed to subscribe to gift sub events:', error);
+      // Continue even if gift sub subscription fails
     }
 
     return results;

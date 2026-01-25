@@ -136,10 +136,15 @@ export class TwitchWebhooksController {
 
         case 'notification':
           // Process notification events
+          console.log('🔄 [Twitch Webhook] Subscription type:', subscriptionType);
           if (subscriptionType === 'channel.chat.message') {
             await this.twitchWebhooksService.processChatMessage(eventData.event);
           } else if (subscriptionType === 'channel.cheer') {
             await this.twitchWebhooksService.processBitsEvent(eventData.event);
+          } else if (subscriptionType === 'channel.subscribe') {
+            await this.twitchWebhooksService.processSubscriptionEvent(eventData.event);
+          } else if (subscriptionType === 'channel.subscription.gift') {
+            await this.twitchWebhooksService.processGiftSubEvent(eventData.event);
           }
           break;
 

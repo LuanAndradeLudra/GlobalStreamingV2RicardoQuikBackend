@@ -623,6 +623,165 @@ export class TwitchWebhooksService {
   }
 
   /**
+   * Process subscription event from EventSub
+   * EventSub subscription type: channel.subscribe
+   * Handles: New subs, renewals (resubs), and received gifts
+   */
+  async processSubscriptionEvent(event: any): Promise<void> {
+    this.logger.log('🎊 [Twitch Sub] Processing subscription event...');
+    this.logger.log(`📝 [Twitch Sub] Event: ${JSON.stringify(event, null, 2)}`);
+    
+    try {
+      const broadcasterUserId = event.broadcaster_user_id;
+      const userId = event.user_id;
+      const username = event.user_login || event.user_name;
+      const tier = event.tier; // "1000", "2000", "3000", or "Prime"
+      const isGift = event.is_gift || false;
+
+      this.logger.log(`🎊 [Twitch Sub] Parsed: broadcaster=${broadcasterUserId}, user=${userId}, username=${username}, tier=${tier}, isGift=${isGift}`);
+
+      if (!broadcasterUserId || !userId || !username) {
+        this.logger.warn('⚠️ [Twitch Sub] Missing required fields');
+        return;
+      }
+
+      // Find connected account
+      const connectedAccount = await this.prisma.connectedAccount.findFirst({
+        where: {
+          platform: ConnectedPlatform.TWITCH,
+          externalChannelId: broadcasterUserId,
+        },
+      });
+
+      if (!connectedAccount) {
+        this.logger.warn(`⚠️ [Twitch Sub] No connected account found for broadcaster ${broadcasterUserId}`);
+        return;
+      }
+
+      this.logger.log(`✅ [Twitch Sub] Found connected account for user ${connectedAccount.userId}`);
+
+      // TODOS os eventos de channel.subscribe são SUBSCRIPTION
+      // Não importa se é gift ou não, a pessoa se tornou um subscriber
+      // O campo isGift no metadata distingue se foi presente ou não
+      const eventType = 'SUBSCRIPTION';
+
+      // Save event to database
+      const savedEvent = await this.prisma.event.create({
+        data: {
+          userId: connectedAccount.userId,
+          platform: ConnectedPlatform.TWITCH,
+          eventType: eventType,
+          externalUserId: userId,
+          username: username,
+          amount: 0, // Subs não têm amount (bits), mas o campo é obrigatório
+          message: null, // Subs não têm mensagem neste evento
+          metadata: {
+            broadcasterUserId,
+            tier,
+            isGift, // Marca se foi gift ou não
+            role: isGift ? 'receiver' : undefined, // Se for gift, marca como recebedor
+            source: 'channel.subscribe',
+          },
+        },
+      });
+
+      this.logger.log(`✅ [Twitch Sub] Event saved successfully!`);
+      this.logger.log(`   ID: ${savedEvent.id}`);
+      this.logger.log(`   User: ${username}`);
+      this.logger.log(`   Type: ${isGift ? 'Gift Sub (Received) - New Subscriber' : 'New Sub / Renewal'}`);
+      this.logger.log(`   Tier: ${tier}`);
+
+    } catch (error) {
+      this.logger.error('❌ [Twitch Sub] Error processing subscription event:', error);
+      this.logger.error('❌ [Twitch Sub] Stack:', error instanceof Error ? error.stack : String(error));
+    }
+  }
+
+  /**
+   * Process gift subscription event from EventSub
+   * EventSub subscription type: channel.subscription.gift
+   * Handles: Who GAVE gift subs (not who received them)
+   */
+  async processGiftSubEvent(event: any): Promise<void> {
+    this.logger.log('🎁 [Twitch Gift] Processing gift subscription event...');
+    this.logger.log(`📝 [Twitch Gift] Event: ${JSON.stringify(event, null, 2)}`);
+    
+    try {
+      const broadcasterUserId = event.broadcaster_user_id;
+      const userId = event.user_id; // Quem DOOU os gift subs
+      const username = event.user_login || event.user_name;
+      const tier = event.tier; // "1000", "2000", "3000"
+      const total = event.total; // Quantidade total de gift subs dados
+      const isAnonymous = event.is_anonymous || false;
+
+      this.logger.log(`🎁 [Twitch Gift] Parsed: broadcaster=${broadcasterUserId}, gifter=${userId}, username=${username}, tier=${tier}, total=${total}, isAnonymous=${isAnonymous}`);
+
+      if (!broadcasterUserId || !total) {
+        this.logger.warn('⚠️ [Twitch Gift] Missing required fields');
+        return;
+      }
+
+      // Se é anônimo, não processar
+      if (isAnonymous) {
+        this.logger.log('🎁 [Twitch Gift] Anonymous gift, skipping user registration');
+        return;
+      }
+
+      if (!userId || !username) {
+        this.logger.warn('⚠️ [Twitch Gift] Missing user info for non-anonymous gift');
+        return;
+      }
+
+      // Find connected account
+      const connectedAccount = await this.prisma.connectedAccount.findFirst({
+        where: {
+          platform: ConnectedPlatform.TWITCH,
+          externalChannelId: broadcasterUserId,
+        },
+      });
+
+      if (!connectedAccount) {
+        this.logger.warn(`⚠️ [Twitch Gift] No connected account found for broadcaster ${broadcasterUserId}`);
+        return;
+      }
+
+      this.logger.log(`✅ [Twitch Gift] Found connected account for user ${connectedAccount.userId}`);
+
+      // Save event to database
+      // O doador é registrado como GIFT_SUBSCRIPTION com amount = quantidade de gifts
+      const savedEvent = await this.prisma.event.create({
+        data: {
+          userId: connectedAccount.userId,
+          platform: ConnectedPlatform.TWITCH,
+          eventType: 'GIFT_SUBSCRIPTION',
+          externalUserId: userId,
+          username: username,
+          amount: total, // Quantidade de gift subs doados
+          message: null,
+          metadata: {
+            broadcasterUserId,
+            tier,
+            total,
+            isAnonymous,
+            role: 'gifter', // Marca que este é o doador, não o recebedor
+            source: 'channel.subscription.gift',
+          },
+        },
+      });
+
+      this.logger.log(`✅ [Twitch Gift] Event saved successfully!`);
+      this.logger.log(`   ID: ${savedEvent.id}`);
+      this.logger.log(`   Gifter: ${username}`);
+      this.logger.log(`   Total Gift Subs: ${total}`);
+      this.logger.log(`   Tier: ${tier}`);
+
+    } catch (error) {
+      this.logger.error('❌ [Twitch Gift] Error processing gift subscription event:', error);
+      this.logger.error('❌ [Twitch Gift] Stack:', error instanceof Error ? error.stack : String(error));
+    }
+  }
+
+  /**
    * Salva evento de bits detectado via Power-Up no chat.message
    * Bits enviados com Power-Up não geram evento channel.cheer, apenas chat.message
    * 

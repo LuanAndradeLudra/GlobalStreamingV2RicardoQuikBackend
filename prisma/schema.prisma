@@ -89,6 +89,8 @@ enum IntegratedGiftSubsCategory {
 
 enum EventType {
   BITS
+  SUBSCRIPTION      // Novo sub ou renovação
+  GIFT_SUBSCRIPTION // Presente de sub
 }
 
 model User {
