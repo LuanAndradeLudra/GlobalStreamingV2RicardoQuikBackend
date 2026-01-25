@@ -111,10 +111,20 @@ export class TwitchWebhooksService {
         return;
       }
 
-      // ✅ Detectar bits com Power-Up/animação
+      // ✅ 1. Detectar bits com CHEERMOTE (ex: Cheer25)
+      // O campo `cheer.bits` contém a quantidade de bits doados via cheermote
+      if (event.cheer && event.cheer.bits) {
+        const bits = event.cheer.bits;
+        this.logger.log(`💎 [Twitch Chat] Detected Cheermote: ${bits} bits from ${username}`);
+        
+        // Salvar evento de bits no banco
+        await this.saveBitsEventFromCheermote(event, broadcasterUserId, userId, username, messageText, bits);
+      }
+
+      // ✅ 2. Detectar bits com Power-Up/animação
       // Power-Ups podem vir de várias formas:
-      // 1. power_ups_gigantified_emote - Emote gigante (350 bits)
-      // 2. power_ups_message_effect - Animação de mensagem (varia por animationId)
+      // 1. power_ups_gigantified_emote - Emote gigante (15 bits)
+      // 2. power_ups_message_effect - Animação de mensagem (10 bits)
       const messageType = event.message_type;
       const animationId = event.channel_points_animation_id;
       
@@ -788,6 +798,72 @@ export class TwitchWebhooksService {
    * Tipos de Power-Up:
    * - power_ups_gigantified_emote: Emote gigante (350 bits)
    * - power_ups_message_effect: Efeito de mensagem (varia por animationId)
+   */
+  /**
+   * Save bits event from cheermote (ex: Cheer25)
+   */
+  private async saveBitsEventFromCheermote(
+    event: any,
+    broadcasterUserId: string,
+    userId: string,
+    username: string,
+    message: string,
+    bits: number,
+  ): Promise<void> {
+    try {
+      // Find connected account
+      const connectedAccount = await this.prisma.connectedAccount.findFirst({
+        where: {
+          platform: ConnectedPlatform.TWITCH,
+          externalChannelId: broadcasterUserId,
+        },
+      });
+
+      if (!connectedAccount) {
+        this.logger.warn(`⚠️ [Twitch Cheermote] No connected account found for broadcaster ${broadcasterUserId}`);
+        return;
+      }
+
+      // Extract cheermote info from message fragments
+      const cheermoteFragment = event.message?.fragments?.find((f: any) => f.type === 'cheermote');
+      const cheermotePrefix = cheermoteFragment?.cheermote?.prefix || 'cheer';
+      const cheerTier = cheermoteFragment?.cheermote?.tier || 1;
+
+      // Save event to database
+      const savedEvent = await this.prisma.event.create({
+        data: {
+          userId: connectedAccount.userId,
+          platform: ConnectedPlatform.TWITCH,
+          eventType: 'BITS',
+          externalUserId: userId,
+          username: username,
+          amount: bits,
+          message: message,
+          metadata: {
+            broadcasterUserId,
+            source: 'cheermote',
+            cheermotePrefix,
+            cheerTier,
+            messageId: event.message_id,
+            estimated: false, // Cheermotes têm valor exato
+          },
+        },
+      });
+
+      this.logger.log(`✅ [Twitch Cheermote] Event saved successfully!`);
+      this.logger.log(`   ID: ${savedEvent.id}`);
+      this.logger.log(`   Sender: ${username}`);
+      this.logger.log(`   Bits: ${bits} (${cheermotePrefix}${bits})`);
+      this.logger.log(`   Message: ${message || '(none)'}`);
+
+    } catch (error) {
+      this.logger.error('❌ [Twitch Cheermote] Error saving bits event:', error);
+      this.logger.error('❌ [Twitch Cheermote] Stack:', error instanceof Error ? error.stack : String(error));
+    }
+  }
+
+  /**
+   * Save bits event from Power-Up (gigantified emote, message effect, etc.)
    */
   private async saveBitsEventFromPowerUp(
     event: any,
