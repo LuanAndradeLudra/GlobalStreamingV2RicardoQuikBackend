@@ -58,12 +58,47 @@ export class TwitchService {
 
   /**
    * Calculate started_at for the current period
+   * - For 'day': Returns the appropriate UTC date based on Brazil timezone (UTC-3)
+   *   If it's after 21:00 (9 PM) in Brazil (00:00 UTC next day), we need to fetch the next day
+   *   to include bits donated after that time
    * - For 'week': Returns Monday of the NEXT week (current Monday + 7 days) at 00:00:00 UTC
    * - For 'month': Returns the 1st day of the NEXT month at 00:00:00 UTC
    * - For other periods: Returns undefined (uses Twitch's default)
    */
   private calculateStartedAt(period: 'day' | 'week' | 'month' | 'all' | 'year'): string | undefined {
     const now = new Date();
+
+    if (period === 'day') {
+      // Brasil timezone: UTC-3
+      // When it's 21:00 (9 PM) in Brazil, it's 00:00 UTC (next day)
+      // To get bits for the "current day" in Brazil, we need to check if we're past 21:00 Brazil time
+      
+      // Get current time in Brazil (UTC-3)
+      const brazilOffset = -3 * 60; // -3 hours in minutes
+      const utcTime = now.getTime();
+      const brazilTime = new Date(utcTime + (brazilOffset * 60 * 1000));
+      
+      // Get Brazil hour (0-23)
+      const brazilHour = brazilTime.getUTCHours();
+      
+      // If it's 21:00 or later in Brazil (00:00+ UTC next day), we need tomorrow's data
+      // Otherwise, we need today's data
+      const targetDate = new Date(now);
+      
+      if (brazilHour >= 21) {
+        // It's past 9 PM in Brazil, so we're already in "tomorrow" in UTC
+        // Fetch tomorrow's data (next day in UTC)
+        targetDate.setUTCDate(targetDate.getUTCDate() + 1);
+      }
+      
+      // Set to start of the UTC day (00:00:00)
+      targetDate.setUTCHours(0, 0, 0, 0);
+      
+      console.log(`📅 [Twitch Bits] Brazil time: ${brazilTime.toISOString()}, Brazil hour: ${brazilHour}`);
+      console.log(`📅 [Twitch Bits] Fetching bits for UTC date: ${targetDate.toISOString()}`);
+      
+      return targetDate.toISOString();
+    }
 
     if (period === 'week') {
       // Get Monday of the current week
@@ -85,7 +120,7 @@ export class TwitchService {
       return firstDayNextMonth.toISOString();
     }
 
-    // For 'day', 'all', 'year' - don't send started_at (use Twitch's default)
+    // For 'all', 'year' - don't send started_at (use Twitch's default)
     return undefined;
   }
 
@@ -93,8 +128,11 @@ export class TwitchService {
    * Get Bits leaderboard from Twitch API
    * GET https://api.twitch.tv/helix/bits/leaderboard?period=week&started_at=2025-11-11T00:00:00.0Z
    * 
-   * Note: For 'week' period, automatically calculates Monday of the current week
-   * For 'month' period, automatically calculates the 1st day of the current month
+   * Note: Automatically handles timezone compensation:
+   * - For 'day': Compensates for Brazil timezone (UTC-3). After 21:00 Brazil time,
+   *   fetches next day's data to include bits donated after that time.
+   * - For 'week': Calculates Monday of the current week
+   * - For 'month': Calculates the 1st day of the current month
    */
   async getBitsLeaderboard(
     userId: string,
