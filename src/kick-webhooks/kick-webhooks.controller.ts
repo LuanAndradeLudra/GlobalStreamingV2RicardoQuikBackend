@@ -116,12 +116,23 @@ export class KickWebhooksController {
           break;
 
         case 'channel.subscription.new':
-          await this.kickWebhooksService.processSubscription(event);
+          await this.kickWebhooksService.processSubscriptionNew(event);
+          break;
+
+        case 'channel.subscription.renewal':
+          await this.kickWebhooksService.processSubscriptionRenewal(event);
+          break;
+
+        case 'channel.subscription.gifts':
+          await this.kickWebhooksService.processSubscriptionGifts(event);
           break;
 
         case 'kicks.gifted':
           await this.kickWebhooksService.processKicksGifted(event);
           break;
+
+        default:
+          this.logger.warn(`⚠️ [Kick Webhook] Unhandled event type: ${eventType}`);
       }
 
       return { status: 'ok' };

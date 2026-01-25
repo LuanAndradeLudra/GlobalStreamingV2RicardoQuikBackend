@@ -329,6 +329,8 @@ export class ConnectedAccountsController {
         const events = [
           { name: 'chat.message.sent', version: 1 },
           { name: 'channel.subscription.new', version: 1 },
+          { name: 'channel.subscription.renewal', version: 1 },
+          { name: 'channel.subscription.gifts', version: 1 },
           { name: 'kicks.gifted', version: 1 },
         ];
 
@@ -387,6 +389,8 @@ export class ConnectedAccountsController {
       const events = [
         { name: 'chat.message.sent', version: 1 },
         { name: 'channel.subscription.new', version: 1 },
+        { name: 'channel.subscription.renewal', version: 1 },
+        { name: 'channel.subscription.gifts', version: 1 },
         { name: 'kicks.gifted', version: 1 },
       ];
 

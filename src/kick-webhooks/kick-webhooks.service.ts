@@ -412,11 +412,249 @@ twIDAQAB
   }
 
   /**
-   * Process subscription event
+   * Process new subscription event
+   * Webhook event type: channel.subscription.new
+   */
+  async processSubscriptionNew(event: any): Promise<void> {
+    this.logger.log('🎊 [Kick Sub] Processing new subscription event...');
+    this.logger.log(`📝 [Kick Sub] Event: ${JSON.stringify(event, null, 2)}`);
+
+    try {
+      const broadcasterUserId = event.broadcaster?.user_id?.toString();
+      const broadcasterUsername = event.broadcaster?.username;
+      const subscriberUserId = event.subscriber?.user_id?.toString();
+      const subscriberUsername = event.subscriber?.username;
+      const duration = event.duration; // Duração em meses
+      const createdAt = event.created_at;
+      const expiresAt = event.expires_at;
+
+      this.logger.log(`🎊 [Kick Sub] Parsed: broadcaster=${broadcasterUserId}, subscriber=${subscriberUserId}, username=${subscriberUsername}, duration=${duration}`);
+
+      if (!broadcasterUserId || !subscriberUserId || !subscriberUsername) {
+        this.logger.warn('⚠️ [Kick Sub] Missing required fields');
+        return;
+      }
+
+      // Find connected account
+      const connectedAccount = await this.prisma.connectedAccount.findFirst({
+        where: {
+          platform: ConnectedPlatform.KICK,
+          externalChannelId: broadcasterUserId,
+        },
+      });
+
+      if (!connectedAccount) {
+        this.logger.warn(`⚠️ [Kick Sub] No connected account found for broadcaster ${broadcasterUserId}`);
+        return;
+      }
+
+      this.logger.log(`✅ [Kick Sub] Found connected account for user ${connectedAccount.userId}`);
+
+      // Save event to database
+      const savedEvent = await this.prisma.event.create({
+        data: {
+          userId: connectedAccount.userId,
+          platform: ConnectedPlatform.KICK,
+          eventType: 'SUBSCRIPTION',
+          externalUserId: subscriberUserId,
+          username: subscriberUsername,
+          amount: 0, // Subs não têm amount
+          message: null,
+          metadata: {
+            broadcasterUserId,
+            broadcasterUsername,
+            duration,
+            createdAt,
+            expiresAt,
+            source: 'channel.subscription.new',
+            type: 'new',
+          },
+        },
+      });
+
+      this.logger.log(`✅ [Kick Sub] Event saved successfully!`);
+      this.logger.log(`   ID: ${savedEvent.id}`);
+      this.logger.log(`   Subscriber: ${subscriberUsername}`);
+      this.logger.log(`   Duration: ${duration} month(s)`);
+      this.logger.log(`   Expires: ${expiresAt}`);
+
+    } catch (error) {
+      this.logger.error('❌ [Kick Sub] Error processing new subscription event:', error);
+      this.logger.error('❌ [Kick Sub] Stack:', error instanceof Error ? error.stack : String(error));
+    }
+  }
+
+  /**
+   * Process subscription renewal event
+   * Webhook event type: channel.subscription.renewal
+   */
+  async processSubscriptionRenewal(event: any): Promise<void> {
+    this.logger.log('🔄 [Kick Renewal] Processing subscription renewal event...');
+    this.logger.log(`📝 [Kick Renewal] Event: ${JSON.stringify(event, null, 2)}`);
+
+    try {
+      const broadcasterUserId = event.broadcaster?.user_id?.toString();
+      const broadcasterUsername = event.broadcaster?.username;
+      const subscriberUserId = event.subscriber?.user_id?.toString();
+      const subscriberUsername = event.subscriber?.username;
+      const duration = event.duration; // Duração em meses
+      const createdAt = event.created_at;
+      const expiresAt = event.expires_at;
+
+      this.logger.log(`🔄 [Kick Renewal] Parsed: broadcaster=${broadcasterUserId}, subscriber=${subscriberUserId}, username=${subscriberUsername}, duration=${duration}`);
+
+      if (!broadcasterUserId || !subscriberUserId || !subscriberUsername) {
+        this.logger.warn('⚠️ [Kick Renewal] Missing required fields');
+        return;
+      }
+
+      // Find connected account
+      const connectedAccount = await this.prisma.connectedAccount.findFirst({
+        where: {
+          platform: ConnectedPlatform.KICK,
+          externalChannelId: broadcasterUserId,
+        },
+      });
+
+      if (!connectedAccount) {
+        this.logger.warn(`⚠️ [Kick Renewal] No connected account found for broadcaster ${broadcasterUserId}`);
+        return;
+      }
+
+      this.logger.log(`✅ [Kick Renewal] Found connected account for user ${connectedAccount.userId}`);
+
+      // Save event to database
+      const savedEvent = await this.prisma.event.create({
+        data: {
+          userId: connectedAccount.userId,
+          platform: ConnectedPlatform.KICK,
+          eventType: 'SUBSCRIPTION',
+          externalUserId: subscriberUserId,
+          username: subscriberUsername,
+          amount: 0, // Subs não têm amount
+          message: null,
+          metadata: {
+            broadcasterUserId,
+            broadcasterUsername,
+            duration,
+            createdAt,
+            expiresAt,
+            source: 'channel.subscription.renewal',
+            type: 'renewal',
+          },
+        },
+      });
+
+      this.logger.log(`✅ [Kick Renewal] Event saved successfully!`);
+      this.logger.log(`   ID: ${savedEvent.id}`);
+      this.logger.log(`   Subscriber: ${subscriberUsername}`);
+      this.logger.log(`   Duration: ${duration} month(s)`);
+      this.logger.log(`   Expires: ${expiresAt}`);
+
+    } catch (error) {
+      this.logger.error('❌ [Kick Renewal] Error processing renewal event:', error);
+      this.logger.error('❌ [Kick Renewal] Stack:', error instanceof Error ? error.stack : String(error));
+    }
+  }
+
+  /**
+   * Process subscription gifts event
+   * Webhook event type: channel.subscription.gifts
+   */
+  async processSubscriptionGifts(event: any): Promise<void> {
+    this.logger.log('🎁 [Kick Gift] Processing subscription gifts event...');
+    this.logger.log(`📝 [Kick Gift] Event: ${JSON.stringify(event, null, 2)}`);
+
+    try {
+      const broadcasterUserId = event.broadcaster?.user_id?.toString();
+      const broadcasterUsername = event.broadcaster?.username;
+      const gifterUserId = event.gifter?.user_id?.toString();
+      const gifterUsername = event.gifter?.username;
+      const isAnonymous = event.gifter?.is_anonymous || false;
+      const giftees = event.giftees || [];
+      const createdAt = event.created_at;
+      const expiresAt = event.expires_at;
+
+      this.logger.log(`🎁 [Kick Gift] Parsed: broadcaster=${broadcasterUserId}, gifter=${gifterUserId}, username=${gifterUsername}, giftees=${giftees.length}, isAnonymous=${isAnonymous}`);
+
+      if (!broadcasterUserId || giftees.length === 0) {
+        this.logger.warn('⚠️ [Kick Gift] Missing required fields');
+        return;
+      }
+
+      // Se é anônimo, não processar
+      if (isAnonymous) {
+        this.logger.log('🎁 [Kick Gift] Anonymous gift, skipping user registration');
+        return;
+      }
+
+      if (!gifterUserId || !gifterUsername) {
+        this.logger.warn('⚠️ [Kick Gift] Missing gifter info for non-anonymous gift');
+        return;
+      }
+
+      // Find connected account
+      const connectedAccount = await this.prisma.connectedAccount.findFirst({
+        where: {
+          platform: ConnectedPlatform.KICK,
+          externalChannelId: broadcasterUserId,
+        },
+      });
+
+      if (!connectedAccount) {
+        this.logger.warn(`⚠️ [Kick Gift] No connected account found for broadcaster ${broadcasterUserId}`);
+        return;
+      }
+
+      this.logger.log(`✅ [Kick Gift] Found connected account for user ${connectedAccount.userId}`);
+
+      // Save event to database - O doador é registrado com amount = quantidade de gifts
+      const savedEvent = await this.prisma.event.create({
+        data: {
+          userId: connectedAccount.userId,
+          platform: ConnectedPlatform.KICK,
+          eventType: 'GIFT_SUBSCRIPTION',
+          externalUserId: gifterUserId,
+          username: gifterUsername,
+          amount: giftees.length, // Quantidade de gift subs doados
+          message: null,
+          metadata: {
+            broadcasterUserId,
+            broadcasterUsername,
+            isAnonymous,
+            createdAt,
+            expiresAt,
+            giftees: giftees.map((g: any) => ({
+              userId: g.user_id,
+              username: g.username,
+            })),
+            source: 'channel.subscription.gifts',
+            role: 'gifter',
+          },
+        },
+      });
+
+      this.logger.log(`✅ [Kick Gift] Event saved successfully!`);
+      this.logger.log(`   ID: ${savedEvent.id}`);
+      this.logger.log(`   Gifter: ${gifterUsername}`);
+      this.logger.log(`   Total Gift Subs: ${giftees.length}`);
+      this.logger.log(`   Expires: ${expiresAt}`);
+
+    } catch (error) {
+      this.logger.error('❌ [Kick Gift] Error processing gift subscription event:', error);
+      this.logger.error('❌ [Kick Gift] Stack:', error instanceof Error ? error.stack : String(error));
+    }
+  }
+
+  /**
+   * Process subscription event (DEPRECATED - use specific methods above)
+   * Kept for backwards compatibility
    */
   async processSubscription(event: any): Promise<void> {
-    this.logger.log('🎁 [Kick Webhook] Subscription event received');
+    this.logger.log('🎁 [Kick Webhook] Subscription event received (deprecated method)');
     this.logger.log('📝 [Kick Webhook] Subscription details:', JSON.stringify(event, null, 2));
+    // This method is deprecated, use processSubscriptionNew instead
+    await this.processSubscriptionNew(event);
   }
 
   /**
