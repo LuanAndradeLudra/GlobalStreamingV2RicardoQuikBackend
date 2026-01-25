@@ -111,17 +111,11 @@ export class TwitchWebhooksService {
         return;
       }
 
-      // ✅ 1. Detectar bits com CHEERMOTE (ex: Cheer25)
-      // O campo `cheer.bits` contém a quantidade de bits doados via cheermote
-      if (event.cheer && event.cheer.bits) {
-        const bits = event.cheer.bits;
-        this.logger.log(`💎 [Twitch Chat] Detected Cheermote: ${bits} bits from ${username}`);
-        
-        // Salvar evento de bits no banco
-        await this.saveBitsEventFromCheermote(event, broadcasterUserId, userId, username, messageText, bits);
-      }
-
-      // ✅ 2. Detectar bits com Power-Up/animação
+      // ⚠️ IMPORTANTE: NÃO processar cheermotes aqui!
+      // Cheermotes (ex: Cheer25) já são capturados pelo evento `channel.cheer`
+      // Se processarmos aqui também, haverá duplicação
+      
+      // ✅ Detectar bits com Power-Up/animação
       // Power-Ups podem vir de várias formas:
       // 1. power_ups_gigantified_emote - Emote gigante (15 bits)
       // 2. power_ups_message_effect - Animação de mensagem (10 bits)
