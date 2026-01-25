@@ -240,9 +240,18 @@ export class IntegratedBitsKickCoinsGiveawayService {
     }
 
     // Get the appropriate Kick leaderboard array based on category
-    const kickLeaderboardArray = giveaway.category === 'WEEKLY' 
-      ? kickCoinsLeaderboard.data.week 
-      : kickCoinsLeaderboard.data.month;
+    // Handle both formats: direct array or nested object with week/month/daily
+    let kickLeaderboardArray: any[];
+    
+    if (Array.isArray(kickCoinsLeaderboard.data)) {
+      // Direct array format (from /events/kick-coins/daily endpoint)
+      kickLeaderboardArray = kickCoinsLeaderboard.data;
+    } else {
+      // Nested object format (from Kick API)
+      kickLeaderboardArray = giveaway.category === 'WEEKLY' 
+        ? kickCoinsLeaderboard.data.week 
+        : kickCoinsLeaderboard.data.month;
+    }
 
     if (!kickLeaderboardArray || !Array.isArray(kickLeaderboardArray)) {
       throw new BadRequestException('Invalid Kick Coins leaderboard array');
