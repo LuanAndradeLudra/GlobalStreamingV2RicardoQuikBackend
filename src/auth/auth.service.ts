@@ -69,5 +69,10 @@ export class AuthService {
     const user = await this.userService.findById(payload.sub);
     return user;
   }
+
+  // ⚠️ MÉTODO TEMPORÁRIO APENAS PARA DESENVOLVIMENTO ⚠️
+  async bypassLogin(userId: string): Promise<User | null> {
+    return this.userService.findById(userId);
+  }
 }
 
