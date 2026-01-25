@@ -87,6 +87,10 @@ enum IntegratedGiftSubsCategory {
   ACTIVE
 }
 
+enum EventType {
+  BITS
+}
+
 model User {
   id                        String                     @id @default(uuid())
   email                     String                     @unique
@@ -634,4 +638,24 @@ model IntegratedGiftSubsGiveawayWinner {
   @@index([integratedGiftSubsGiveawayId], map: "integrated_gift_subs_winner_giveaway_id_idx")
   @@index([integratedGiftSubsGiveawayId, status], map: "integrated_gift_subs_winner_giveaway_id_status_idx")
   @@index([winnerParticipantId], map: "integrated_gift_subs_winner_participant_id_idx")
+}
+
+// Event table - Registra eventos de bits em tempo real
+model Event {
+  id              String            @id @default(uuid())
+  userId          String            // ID do usuário dono do canal
+  platform        ConnectedPlatform // TWITCH
+  eventType       EventType         // BITS
+  externalUserId  String            // ID do usuário que doou
+  username        String            // Username do doador
+  amount          Int               // Quantidade de bits
+  message         String?           // Mensagem enviada junto com os bits
+  metadata        Json?             // Dados extras do evento
+  eventDate       DateTime          @default(now())
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([userId, platform])
+  @@index([userId, platform, eventType, eventDate])
 }

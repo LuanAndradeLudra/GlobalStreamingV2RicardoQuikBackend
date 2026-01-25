@@ -553,6 +553,78 @@ Original error: ${responseText}`;
   }
 
   /**
+   * Subscribe to channel.cheer EventSub
+   * This is a convenience method specifically for Bits donations
+   */
+  async subscribeToCheerEvents(
+    broadcasterUserId: string,
+    webhookUrl: string,
+    webhookSecret: string,
+  ): Promise<any> {
+    console.log('🔄 [Twitch EventSub] Subscribing to cheer events (Bits)...');
+    console.log('📝 [Twitch EventSub] Broadcaster ID:', broadcasterUserId);
+
+    const appAccessToken = await this.getAppAccessToken();
+
+    return this.createEventSubSubscription(
+      appAccessToken,
+      'channel.cheer',
+      '1',
+      {
+        broadcaster_user_id: broadcasterUserId,
+      },
+      webhookUrl,
+      webhookSecret,
+    );
+  }
+
+  /**
+   * Subscribe to all webhook events (chat messages and bits)
+   */
+  async subscribeToAllWebhookEvents(
+    broadcasterUserId: string,
+    botUserId: string,
+    webhookUrl: string,
+    webhookSecret: string,
+  ): Promise<{ chatMessages: any; cheerEvents: any }> {
+    console.log('🔄 [Twitch EventSub] Subscribing to all webhook events...');
+
+    const results = {
+      chatMessages: null as any,
+      cheerEvents: null as any,
+    };
+
+    // Subscribe to chat messages
+    try {
+      results.chatMessages = await this.subscribeToChatMessages(
+        broadcasterUserId,
+        botUserId,
+        webhookUrl,
+        webhookSecret,
+      );
+      console.log('✅ [Twitch EventSub] Successfully subscribed to chat messages');
+    } catch (error) {
+      console.error('❌ [Twitch EventSub] Failed to subscribe to chat messages:', error);
+      throw error;
+    }
+
+    // Subscribe to cheer events
+    try {
+      results.cheerEvents = await this.subscribeToCheerEvents(
+        broadcasterUserId,
+        webhookUrl,
+        webhookSecret,
+      );
+      console.log('✅ [Twitch EventSub] Successfully subscribed to cheer events');
+    } catch (error) {
+      console.error('❌ [Twitch EventSub] Failed to subscribe to cheer events:', error);
+      // Continue even if cheer subscription fails
+    }
+
+    return results;
+  }
+
+  /**
    * Update EventSub subscriptions
    * Deletes existing subscriptions and creates new ones
    */
@@ -573,17 +645,14 @@ Original error: ${responseText}`;
 
       console.log('📋 [Twitch EventSub] Existing subscriptions:', JSON.stringify(subscriptions, null, 2));
 
-      // Delete all existing subscriptions for this broadcaster/bot
+      // Delete all existing subscriptions for this broadcaster
       if (subscriptions.length > 0) {
         console.log(`🗑️ [Twitch EventSub] Deleting ${subscriptions.length} existing subscriptions...`);
         await Promise.all(
           subscriptions
             .filter((sub: any) => {
-              // Only delete subscriptions for this broadcaster and bot
-              return (
-                sub.condition?.broadcaster_user_id === broadcasterUserId &&
-                sub.condition?.user_id === botUserId
-              );
+              // Only delete subscriptions for this broadcaster
+              return sub.condition?.broadcaster_user_id === broadcasterUserId;
             })
             .map((sub: any) => {
               const subscriptionId = sub.id;
@@ -591,7 +660,7 @@ Original error: ${responseText}`;
                 console.warn(`⚠️ [Twitch EventSub] Subscription has no ID:`, JSON.stringify(sub, null, 2));
                 return Promise.resolve();
               }
-              console.log(`🗑️ [Twitch EventSub] Deleting subscription: ${subscriptionId}`);
+              console.log(`🗑️ [Twitch EventSub] Deleting subscription: ${subscriptionId} (type: ${sub.type})`);
               return this.deleteEventSubSubscription(appAccessToken, subscriptionId).catch((err) => {
                 console.warn(`⚠️ [Twitch EventSub] Failed to delete subscription ${subscriptionId}:`, err);
               });
@@ -599,9 +668,9 @@ Original error: ${responseText}`;
         );
       }
 
-      // Create new subscription
-      console.log('✅ [Twitch EventSub] Creating new subscription...');
-      return await this.subscribeToChatMessages(broadcasterUserId, botUserId, webhookUrl, webhookSecret);
+      // Create new subscriptions (chat messages and bits)
+      console.log('✅ [Twitch EventSub] Creating new subscriptions...');
+      return await this.subscribeToAllWebhookEvents(broadcasterUserId, botUserId, webhookUrl, webhookSecret);
     } catch (error) {
       console.error('Error updating EventSub subscriptions:', error);
       throw error;

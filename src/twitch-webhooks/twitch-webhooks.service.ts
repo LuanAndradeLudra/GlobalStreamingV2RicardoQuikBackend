@@ -111,6 +111,21 @@ export class TwitchWebhooksService {
         return;
       }
 
+      // ✅ Detectar bits com Power-Up/animação
+      // Power-Ups podem vir de várias formas:
+      // 1. power_ups_gigantified_emote - Emote gigante (350 bits)
+      // 2. power_ups_message_effect - Animação de mensagem (varia por animationId)
+      const messageType = event.message_type;
+      const animationId = event.channel_points_animation_id;
+      
+      // Se o message_type indica Power-Up, é uma doação de bits
+      if (messageType && messageType.startsWith('power_ups')) {
+        this.logger.log(`💎 [Twitch Chat] Detected Power-Up: ${messageType}, animation: ${animationId || 'none'}`);
+        
+        // Salvar evento de bits no banco
+        await this.saveBitsEventFromPowerUp(event, broadcasterUserId, userId, username, messageText, messageType, animationId);
+      }
+
       // Mapeia broadcasterUserId (Twitch) → userId (nosso sistema)
       const connectedAccount = await this.prisma.connectedAccount.findFirst({
         where: {
@@ -526,6 +541,171 @@ export class TwitchWebhooksService {
   async processRevocation(event: any): Promise<void> {
     this.logger.error('❌ [Twitch Webhook] Subscription revoked');
     // TODO: Handle revocation - cleanup subscriptions, notify user, etc.
+  }
+
+  /**
+   * Process bits (cheer) event from EventSub
+   * EventSub subscription type: channel.cheer
+   */
+  async processBitsEvent(event: any): Promise<void> {
+    this.logger.log('💎 [Twitch Bits] Processing bits event...');
+    this.logger.log(`📝 [Twitch Bits] Event: ${JSON.stringify(event, null, 2)}`);
+    
+    try {
+      const broadcasterUserId = event.broadcaster_user_id;
+      const userId = event.user_id;
+      const username = event.user_login || event.user_name;
+      const bits = event.bits;
+      const message = event.message || '';
+      const isAnonymous = event.is_anonymous || false;
+
+      this.logger.log(`💎 [Twitch Bits] Parsed: broadcaster=${broadcasterUserId}, user=${userId}, username=${username}, bits=${bits}`);
+
+      if (!broadcasterUserId || !bits) {
+        this.logger.warn('⚠️ [Twitch Bits] Missing required fields (broadcaster or bits)');
+        return;
+      }
+
+      // Se é anônimo, não processar (ou processar de forma diferente)
+      if (isAnonymous) {
+        this.logger.log('💎 [Twitch Bits] Anonymous donation, skipping user registration');
+        return;
+      }
+
+      if (!userId || !username) {
+        this.logger.warn('⚠️ [Twitch Bits] Missing user info for non-anonymous donation');
+        return;
+      }
+
+      // Find connected account
+      const connectedAccount = await this.prisma.connectedAccount.findFirst({
+        where: {
+          platform: ConnectedPlatform.TWITCH,
+          externalChannelId: broadcasterUserId,
+        },
+      });
+
+      if (!connectedAccount) {
+        this.logger.warn(`⚠️ [Twitch Bits] No connected account found for broadcaster ${broadcasterUserId}`);
+        return;
+      }
+
+      this.logger.log(`✅ [Twitch Bits] Found connected account for user ${connectedAccount.userId}`);
+
+      // Save event to database
+      const savedEvent = await this.prisma.event.create({
+        data: {
+          userId: connectedAccount.userId,
+          platform: ConnectedPlatform.TWITCH,
+          eventType: 'BITS',
+          externalUserId: userId,
+          username: username,
+          amount: bits,
+          message: message,
+          metadata: {
+            broadcasterUserId,
+            isAnonymous,
+            source: 'channel.cheer', // Marca que veio do EventSub channel.cheer
+          },
+        },
+      });
+
+      this.logger.log(`✅ [Twitch Bits] Event saved successfully!`);
+      this.logger.log(`   ID: ${savedEvent.id}`);
+      this.logger.log(`   User: ${username}`);
+      this.logger.log(`   Bits: ${bits}`);
+      this.logger.log(`   Message: ${message || '(none)'}`);
+
+    } catch (error) {
+      this.logger.error('❌ [Twitch Bits] Error processing bits event:', error);
+      this.logger.error('❌ [Twitch Bits] Stack:', error instanceof Error ? error.stack : String(error));
+    }
+  }
+
+  /**
+   * Salva evento de bits detectado via Power-Up no chat.message
+   * Bits enviados com Power-Up não geram evento channel.cheer, apenas chat.message
+   * 
+   * Tipos de Power-Up:
+   * - power_ups_gigantified_emote: Emote gigante (350 bits)
+   * - power_ups_message_effect: Efeito de mensagem (varia por animationId)
+   */
+  private async saveBitsEventFromPowerUp(
+    event: any,
+    broadcasterUserId: string,
+    userId: string,
+    username: string,
+    message: string,
+    messageType: string,
+    animationId: string | null,
+  ): Promise<void> {
+    try {
+      // Find connected account
+      const connectedAccount = await this.prisma.connectedAccount.findFirst({
+        where: {
+          platform: ConnectedPlatform.TWITCH,
+          externalChannelId: broadcasterUserId,
+        },
+      });
+
+      if (!connectedAccount) {
+        this.logger.warn(`⚠️ [Twitch Power-Up] No connected account found for broadcaster ${broadcasterUserId}`);
+        return;
+      }
+
+      // Determina quantidade de bits baseado no tipo de Power-Up
+      let estimatedBits = 0;
+      let powerUpType = 'unknown';
+
+      // Mapeia message_type para quantidade de bits
+      const messageTypeToBits: Record<string, number> = {
+        'power_ups_gigantified_emote': 15,  // Emote gigante
+        'power_ups_message_effect': 10,      // Efeito de mensagem
+      };
+
+      estimatedBits = messageTypeToBits[messageType] || 1; // Default: 1 bit para tipos desconhecidos
+      
+      if (messageType === 'power_ups_gigantified_emote') {
+        powerUpType = 'Gigantified Emote';
+      } else if (messageType === 'power_ups_message_effect') {
+        powerUpType = animationId ? `Message Effect (${animationId})` : 'Message Effect';
+      } else {
+        powerUpType = `Unknown (${messageType})`;
+        this.logger.warn(`⚠️ [Twitch Power-Up] Unknown Power-Up type: ${messageType}`);
+      }
+
+      // Save event to database
+      const savedEvent = await this.prisma.event.create({
+        data: {
+          userId: connectedAccount.userId,
+          platform: ConnectedPlatform.TWITCH,
+          eventType: 'BITS',
+          externalUserId: userId,
+          username: username,
+          amount: estimatedBits,
+          message: message,
+          metadata: {
+            broadcasterUserId,
+            messageType,
+            animationId: animationId || null,
+            source: 'power_up',
+            powerUpType,
+            estimated: true,
+          },
+        },
+      });
+
+      this.logger.log(`✅ [Twitch Power-Up] Bits event saved!`);
+      this.logger.log(`   ID: ${savedEvent.id}`);
+      this.logger.log(`   User: ${username}`);
+      this.logger.log(`   Type: ${powerUpType}`);
+      this.logger.log(`   Estimated Bits: ${estimatedBits}`);
+      this.logger.log(`   Message: ${message || '(none)'}`);
+
+    } catch (error) {
+      this.logger.error('❌ [Twitch Power-Up] Error saving bits event:', error);
+      this.logger.error('❌ [Twitch Power-Up] Stack:', error instanceof Error ? error.stack : String(error));
+    }
   }
 }
 

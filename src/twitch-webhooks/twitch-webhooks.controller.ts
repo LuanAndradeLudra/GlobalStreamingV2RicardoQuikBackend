@@ -91,6 +91,8 @@ export class TwitchWebhooksController {
     // CRITICAL: Use rawBody Buffer exactly as received, without modifications
     const rawBody = req.rawBody || Buffer.from(JSON.stringify(body), 'utf8');
 
+    console.log('🔄 [Twitch Webhook] Raw body:', rawBody.toString('utf8'));
+
     // Verify signature (skip for webhook_callback_verification message type)
     if (messageType !== 'webhook_callback_verification') {
       const isValid = this.twitchWebhooksService.verifySignature(
@@ -136,6 +138,8 @@ export class TwitchWebhooksController {
           // Process notification events
           if (subscriptionType === 'channel.chat.message') {
             await this.twitchWebhooksService.processChatMessage(eventData.event);
+          } else if (subscriptionType === 'channel.cheer') {
+            await this.twitchWebhooksService.processBitsEvent(eventData.event);
           }
           break;
 
