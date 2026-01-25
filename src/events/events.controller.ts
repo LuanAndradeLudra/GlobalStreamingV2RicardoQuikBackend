@@ -75,5 +75,33 @@ export class EventsController {
   async getKickCoinsMonthly(@CurrentUser() user: User) {
     return this.eventsService.getKickCoinsMonthly(user.id);
   }
+
+  @Get('twitch-gift-subs/daily')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Get daily Twitch Gift Subs leaderboard from Event table',
+    description: 'Returns Twitch Gift Subs gifted today grouped by gifter. Used for DAILY giveaways.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Daily Twitch Gift Subs leaderboard retrieved successfully',
+  })
+  async getTwitchGiftSubsDaily(@CurrentUser() user: User) {
+    return this.eventsService.getTwitchGiftSubsDaily(user.id);
+  }
+
+  @Get('kick-gift-subs/daily')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Get daily Kick Gift Subs leaderboard from Event table',
+    description: 'Returns Kick Gift Subs gifted today grouped by gifter. Used for DAILY giveaways.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Daily Kick Gift Subs leaderboard retrieved successfully',
+  })
+  async getKickGiftSubsDaily(@CurrentUser() user: User) {
+    return this.eventsService.getKickGiftSubsDaily(user.id);
+  }
 }
 

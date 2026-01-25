@@ -249,12 +249,27 @@ export class IntegratedGiftSubsGiveawayService {
       throw new BadRequestException('Kick GIFT_SUB ticket rule not found for this user');
     }
 
-    // Process Twitch gift subs using the existing service's logic
-    // Group by gifter from the subscription data
+    // Process Twitch gift subs
+    // Two formats possible:
+    // 1. ACTIVE: { is_gift: true, gifter_id, gifter_name, gifter_login } 
+    // 2. DAILY: { user_id, user_login, user_name, score }
     const twitchGifterMap = new Map<string, { gifter_id: string; gifter_name: string; count: number }>();
     
     for (const sub of twitchGiftSubsLeaderboard.data) {
-      if (sub.is_gift && sub.gifter_id) {
+      // Check if it's DAILY format (has user_id and score)
+      if ('user_id' in sub && 'score' in sub) {
+        // DAILY format from Event table
+        const userId = (sub as any).user_id;
+        const username = (sub as any).user_name || (sub as any).user_login;
+        const score = (sub as any).score || 0;
+        
+        twitchGifterMap.set(userId, {
+          gifter_id: userId,
+          gifter_name: username,
+          count: score,
+        });
+      } else if (sub.is_gift && sub.gifter_id) {
+        // ACTIVE format from Twitch API
         const existing = twitchGifterMap.get(sub.gifter_id);
         if (existing) {
           existing.count += 1;
@@ -302,14 +317,16 @@ export class IntegratedGiftSubsGiveawayService {
     }> = [];
 
     for (const gifter of kickGiftSubsLeaderboard.gifters) {
-      const tickets = Math.floor((gifter.quantity / kickTicketRule.unitSize) * kickTicketRule.ticketsPerUnitSize);
+      // Support both 'gifted_amount' (from Event table) and 'quantity' (from Kick API)
+      const giftCount = (gifter as any).gifted_amount || gifter.quantity || 0;
+      const tickets = Math.floor((giftCount / kickTicketRule.unitSize) * kickTicketRule.ticketsPerUnitSize);
       
       if (tickets > 0) {
         kickParticipants.push({
           platform: ConnectedPlatform.KICK,
           externalUserId: gifter.user_id.toString(),
           username: gifter.username,
-          quantity: gifter.quantity,
+          quantity: giftCount,
           tickets,
         });
       }
@@ -318,8 +335,9 @@ export class IntegratedGiftSubsGiveawayService {
     // Combine all participants
     const allParticipants = [...twitchParticipants, ...kickParticipants];
 
-    if (allParticipants.length === 0) {
-      throw new BadRequestException('No eligible participants found with tickets > 0');
+    // Allow at least 2 participants total (can be from one platform only)
+    if (allParticipants.length < 2) {
+      throw new BadRequestException(`É necessário pelo menos 2 participantes para criar o sorteio. Atualmente há ${allParticipants.length} participante(s) com tickets > 0.`);
     }
 
     // Create participant records
