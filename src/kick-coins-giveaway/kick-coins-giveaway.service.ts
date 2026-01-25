@@ -9,7 +9,7 @@ import { KickService } from '../kick/kick.service';
 import * as crypto from 'crypto';
 
 // Import enum type from Prisma
-type KickCoinsCategory = 'WEEKLY' | 'MONTHLY';
+type KickCoinsCategory = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
 interface KickCoinsLeaderboardResponse {
   data: {
@@ -156,14 +156,16 @@ export class KickCoinsGiveawayService {
 
   /**
    * Generate name for Kick Coins giveaway
-   * Format: "Sorteio de Kick Coins - Semanal/Mensal - DD MM YYYY"
+   * Format: "Sorteio de Kick Coins - Diário/Semanal/Mensal - DD MM YYYY"
    */
   private generateGiveawayName(category: KickCoinsCategory): string {
+    const categoryLabel = 
+      category === 'DAILY' ? 'Diário' :
+      category === 'WEEKLY' ? 'Semanal' : 'Mensal';
     const now = new Date();
     const day = now.getDate().toString().padStart(2, '0');
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
     const year = now.getFullYear();
-    const categoryLabel = category === 'WEEKLY' ? 'Semanal' : 'Mensal';
     return `Sorteio de Kick Coins - ${categoryLabel} - ${day} ${month} ${year}`;
   }
 

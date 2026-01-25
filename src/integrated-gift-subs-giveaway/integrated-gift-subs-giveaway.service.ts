@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
-import { ConnectedPlatform } from '@prisma/client';
+import { ConnectedPlatform, IntegratedGiftSubsCategory } from '@prisma/client';
 import { CreateIntegratedGiftSubsGiveawayDto } from './dto/create-integrated-gift-subs-giveaway.dto';
 import { UpdateIntegratedGiftSubsGiveawayDto } from './dto/update-integrated-gift-subs-giveaway.dto';
 import { TwitchService } from '../twitch/twitch.service';
@@ -156,19 +156,23 @@ export class IntegratedGiftSubsGiveawayService {
   /**
    * Generate name for giveaway
    */
-  private generateGiveawayName(): string {
+  private generateGiveawayName(category: IntegratedGiftSubsCategory): string {
     const now = new Date();
     const day = now.getDate().toString().padStart(2, '0');
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
     const year = now.getFullYear();
-    return `Sorteio Integrado Gift Subs - ${day}/${month}/${year}`;
+    const categoryLabel = 
+      category === 'DAILY' ? 'Diário' :
+      category === 'WEEKLY' ? 'Semanal' :
+      category === 'MONTHLY' ? 'Mensal' : 'Ativos';
+    return `Sorteio Integrado Gift Subs - ${categoryLabel} - ${day} ${month} ${year}`;
   }
 
   /**
    * Create a new giveaway
    */
   async create(userId: string, dto: CreateIntegratedGiftSubsGiveawayDto) {
-    const name = dto.name || this.generateGiveawayName();
+    const name = dto.name || this.generateGiveawayName(dto.category);
 
     const giveaway = await (this.prisma as any).integratedGiftSubsGiveaway.create({
       data: {

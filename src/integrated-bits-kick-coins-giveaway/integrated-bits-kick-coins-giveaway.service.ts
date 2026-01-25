@@ -9,7 +9,7 @@ import { TwitchService } from '../twitch/twitch.service';
 import { KickService } from '../kick/kick.service';
 import * as crypto from 'crypto';
 
-type IntegratedBitsKickCoinsCategory = 'WEEKLY' | 'MONTHLY';
+type IntegratedBitsKickCoinsCategory = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
 interface TwitchBitsLeaderboardResponse {
   data: Array<{
@@ -172,7 +172,9 @@ export class IntegratedBitsKickCoinsGiveawayService {
     const day = now.getDate().toString().padStart(2, '0');
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
     const year = now.getFullYear();
-    const categoryLabel = category === 'WEEKLY' ? 'Semanal' : 'Mensal';
+    const categoryLabel = 
+      category === 'DAILY' ? 'Diário' :
+      category === 'WEEKLY' ? 'Semanal' : 'Mensal';
     return `Sorteio Integrado Bits + Kick Coins - ${categoryLabel} - ${day} ${month} ${year}`;
   }
 

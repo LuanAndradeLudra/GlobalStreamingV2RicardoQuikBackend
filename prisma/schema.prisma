@@ -58,11 +58,13 @@ enum WinnerStatus {
 }
 
 enum KickGiftSubsCategory {
+  DAILY
   WEEKLY
   MONTHLY
 }
 
 enum KickCoinsCategory {
+  DAILY
   WEEKLY
   MONTHLY
 }
@@ -75,15 +77,22 @@ enum TwitchBitsCategory {
 }
 
 enum TwitchGiftSubsCategory {
+  DAILY
+  WEEKLY
+  MONTHLY
   ACTIVE
 }
 
 enum IntegratedBitsKickCoinsCategory {
+  DAILY
   WEEKLY
   MONTHLY
 }
 
 enum IntegratedGiftSubsCategory {
+  DAILY
+  WEEKLY
+  MONTHLY
   ACTIVE
 }
 

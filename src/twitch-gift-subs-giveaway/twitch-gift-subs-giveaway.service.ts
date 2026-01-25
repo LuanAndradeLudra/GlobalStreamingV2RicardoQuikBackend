@@ -148,14 +148,18 @@ export class TwitchGiftSubsGiveawayService {
 
   /**
    * Generate name for Twitch Gift Subs giveaway
-   * Format: "Sorteio de Twitch Gift Subs - Ativos - DD MM YYYY"
+   * Format: "Sorteio de Twitch Gift Subs - Diário/Semanal/Mensal/Ativos - DD MM YYYY"
    */
   private generateGiveawayName(category: TwitchGiftSubsCategory): string {
     const now = new Date();
     const day = now.getDate().toString().padStart(2, '0');
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
     const year = now.getFullYear();
-    return `Sorteio de Twitch Gift Subs - Ativos - ${day} ${month} ${year}`;
+    const categoryLabel = 
+      category === 'DAILY' ? 'Diário' :
+      category === 'WEEKLY' ? 'Semanal' :
+      category === 'MONTHLY' ? 'Mensal' : 'Ativos';
+    return `Sorteio de Twitch Gift Subs - ${categoryLabel} - ${day} ${month} ${year}`;
   }
 
   /**

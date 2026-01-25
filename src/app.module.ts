@@ -22,6 +22,7 @@ import { TwitchModule } from './twitch/twitch.module';
 import { TwitchWebhooksModule } from './twitch-webhooks/twitch-webhooks.module';
 import { YouTubeChatModule } from './youtube-chat/youtube-chat.module';
 import { TokenRefreshCronModule } from './token-refresh-cron/token-refresh-cron.module';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { TokenRefreshCronModule } from './token-refresh-cron/token-refresh-cron.
     TwitchWebhooksModule,
     YouTubeChatModule,
     TokenRefreshCronModule,
+    EventsModule,
   ],
 })
 export class AppModule {}

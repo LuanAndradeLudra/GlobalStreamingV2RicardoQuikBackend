@@ -150,14 +150,16 @@ export class KickGiftSubsGiveawayService {
 
   /**
    * Generate name for Kick Gift Subs giveaway
-   * Format: "Sorteio de Gift Subs - Semanal/Mensal - DD MM YYYY"
+   * Format: "Sorteio de Gift Subs - Diário/Semanal/Mensal - DD MM YYYY"
    */
   private generateGiveawayName(category: KickGiftSubsCategory): string {
     const now = new Date();
     const day = now.getDate().toString().padStart(2, '0');
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
     const year = now.getFullYear();
-    const categoryLabel = category === KickGiftSubsCategory.WEEKLY ? 'Semanal' : 'Mensal';
+    const categoryLabel = 
+      category === 'DAILY' ? 'Diário' :
+      category === 'WEEKLY' ? 'Semanal' : 'Mensal';
     return `Sorteio de Gift Subs - ${categoryLabel} - ${day} ${month} ${year}`;
   }
 
