@@ -126,8 +126,10 @@ export class TwitchWebhooksService {
       if (messageType && messageType.startsWith('power_ups')) {
         this.logger.log(`💎 [Twitch Chat] Detected Power-Up: ${messageType}, animation: ${animationId || 'none'}`);
         
-        // Salvar evento de bits no banco
-        await this.saveBitsEventFromPowerUp(event, broadcasterUserId, userId, username, messageText, messageType, animationId);
+        // 🔴 DESABILITADO: Salvamento de eventos no banco
+        // Usando API da Twitch (leaderboard) para bits diários ao invés da tabela Event
+        // Para reativar: descomente a linha abaixo
+        // await this.saveBitsEventFromPowerUp(event, broadcasterUserId, userId, username, messageText, messageType, animationId);
       }
 
       // Mapeia broadcasterUserId (Twitch) → userId (nosso sistema)
@@ -596,6 +598,11 @@ export class TwitchWebhooksService {
 
       this.logger.log(`✅ [Twitch Bits] Found connected account for user ${connectedAccount.userId}`);
 
+      // 🔴 DESABILITADO: Salvamento de eventos no banco
+      // Usando API da Twitch (leaderboard) para bits diários ao invés da tabela Event
+      // Para reativar: descomente o bloco abaixo
+      
+      /*
       // Save event to database
       const savedEvent = await this.prisma.event.create({
         data: {
@@ -616,6 +623,12 @@ export class TwitchWebhooksService {
 
       this.logger.log(`✅ [Twitch Bits] Event saved successfully!`);
       this.logger.log(`   ID: ${savedEvent.id}`);
+      this.logger.log(`   User: ${username}`);
+      this.logger.log(`   Bits: ${bits}`);
+      this.logger.log(`   Message: ${message || '(none)'}`);
+      */
+
+      this.logger.log(`ℹ️ [Twitch Bits] Event processing completed (database save disabled)`);
       this.logger.log(`   User: ${username}`);
       this.logger.log(`   Bits: ${bits}`);
       this.logger.log(`   Message: ${message || '(none)'}`);
@@ -909,7 +922,7 @@ export class TwitchWebhooksService {
 
       // Mapeia message_type para quantidade de bits
       const messageTypeToBits: Record<string, number> = {
-        'power_ups_gigantified_emote': 15,  // Emote gigante
+        'power_ups_gigantified_emote': 20,  // Emote gigante
         'power_ups_message_effect': 10,      // Efeito de mensagem
       };
 
