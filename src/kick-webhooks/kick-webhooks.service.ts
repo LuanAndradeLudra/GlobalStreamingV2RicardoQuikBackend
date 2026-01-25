@@ -421,10 +421,79 @@ twIDAQAB
 
   /**
    * Process kicks gifted event
+   * Webhook event type: kicks.gifted
+   * Saves Kick Coins donations to the Event table
    */
   async processKicksGifted(event: any): Promise<void> {
-    this.logger.log('💰 [Kick Webhook] Kicks gifted event received');
-    this.logger.log('📝 [Kick Webhook] Kicks details:', JSON.stringify(event, null, 2));
+    this.logger.log('💰 [Kick Coins] Processing kicks gifted event...');
+    this.logger.log(`📝 [Kick Coins] Event: ${JSON.stringify(event, null, 2)}`);
+
+    try {
+      const broadcasterUserId = event.broadcaster?.user_id?.toString();
+      const broadcasterUsername = event.broadcaster?.username;
+      const senderUserId = event.sender?.user_id?.toString();
+      const senderUsername = event.sender?.username;
+      const amount = event.gift?.amount; // Quantidade de Kick Coins
+      const giftName = event.gift?.name;
+      const giftType = event.gift?.type;
+      const tier = event.gift?.tier;
+      const message = event.gift?.message || '';
+
+      this.logger.log(`💰 [Kick Coins] Parsed: broadcaster=${broadcasterUserId}, sender=${senderUserId}, username=${senderUsername}, amount=${amount}`);
+
+      if (!broadcasterUserId || !senderUserId || !senderUsername || !amount) {
+        this.logger.warn('⚠️ [Kick Coins] Missing required fields');
+        return;
+      }
+
+      // Find connected account
+      const connectedAccount = await this.prisma.connectedAccount.findFirst({
+        where: {
+          platform: ConnectedPlatform.KICK,
+          externalChannelId: broadcasterUserId,
+        },
+      });
+
+      if (!connectedAccount) {
+        this.logger.warn(`⚠️ [Kick Coins] No connected account found for broadcaster ${broadcasterUserId}`);
+        return;
+      }
+
+      this.logger.log(`✅ [Kick Coins] Found connected account for user ${connectedAccount.userId}`);
+
+      // Save event to database
+      const savedEvent = await this.prisma.event.create({
+        data: {
+          userId: connectedAccount.userId,
+          platform: ConnectedPlatform.KICK,
+          eventType: 'KICK_COINS',
+          externalUserId: senderUserId,
+          username: senderUsername,
+          amount: amount,
+          message: message,
+          metadata: {
+            broadcasterUserId,
+            broadcasterUsername,
+            giftName,
+            giftType,
+            tier,
+            pinnedTimeSeconds: event.gift?.pinned_time_seconds,
+            source: 'kicks.gifted',
+          },
+        },
+      });
+
+      this.logger.log(`✅ [Kick Coins] Event saved successfully!`);
+      this.logger.log(`   ID: ${savedEvent.id}`);
+      this.logger.log(`   Sender: ${senderUsername}`);
+      this.logger.log(`   Kick Coins: ${amount}`);
+      this.logger.log(`   Gift: ${giftName} (${tier})`);
+      this.logger.log(`   Message: ${message || '(none)'}`);
+
+    } catch (error) {
+      this.logger.error('❌ [Kick Coins] Error processing kicks gifted event:', error);
+      this.logger.error('❌ [Kick Coins] Stack:', error instanceof Error ? error.stack : String(error));
+    }
   }
 
   /**

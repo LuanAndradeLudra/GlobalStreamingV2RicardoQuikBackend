@@ -28,3 +28,4 @@ CREATE INDEX "Event_userId_idx" ON "Event"("userId");
 CREATE INDEX "Event_userId_platform_idx" ON "Event"("userId", "platform");
 CREATE INDEX "Event_userId_platform_eventType_eventDate_idx" ON "Event"("userId", "platform", "eventType", "eventDate");
 
+

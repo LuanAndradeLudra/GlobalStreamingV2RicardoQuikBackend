@@ -6,3 +6,4 @@ CREATE UNIQUE INDEX "ConnectedAccount_userId_platform_externalChannelId_key" ON 
 
 
 
+

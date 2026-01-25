@@ -91,6 +91,7 @@ enum EventType {
   BITS
   SUBSCRIPTION      // Novo sub ou renovação
   GIFT_SUBSCRIPTION // Presente de sub
+  KICK_COINS        // Kick coins gifted
 }
 
 model User {
