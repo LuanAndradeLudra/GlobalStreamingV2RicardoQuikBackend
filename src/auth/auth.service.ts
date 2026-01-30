@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AuthProvider, User, UserRole } from '@prisma/client';
 import { UserService } from '../user/user.service';
@@ -42,15 +42,20 @@ export class AuthService {
     }
 
     // Create new user if not found
+    // COMENTADO: Registro automático desabilitado
+    // if (!user) {
+    //   user = await this.userService.create({
+    //     email: email || `google_${profile.id}@example.com`,
+    //     displayName: profile.displayName,
+    //     avatarUrl: profile.photos?.[0]?.value,
+    //     provider: AuthProvider.GOOGLE,
+    //     providerId: profile.id,
+    //     role: UserRole.USER,
+    //   });
+    // }
+
     if (!user) {
-      user = await this.userService.create({
-        email: email || `google_${profile.id}@example.com`,
-        displayName: profile.displayName,
-        avatarUrl: profile.photos?.[0]?.value,
-        provider: AuthProvider.GOOGLE,
-        providerId: profile.id,
-        role: UserRole.USER,
-      });
+      throw new UnauthorizedException('Usuário inexistente.');
     }
 
     return user;
