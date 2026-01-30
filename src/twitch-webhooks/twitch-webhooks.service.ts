@@ -111,6 +111,42 @@ export class TwitchWebhooksService {
         return;
       }
 
+      // 🏆 Verifica se há vencedor ativo e salva a mensagem no Redis
+      // Busca por todos os sorteios ativos desta plataforma/canal
+      const winnerConnectedAccount = await this.prisma.connectedAccount.findFirst({
+        where: {
+          platform: ConnectedPlatform.TWITCH,
+          externalChannelId: broadcasterUserId,
+        },
+      });
+
+      if (winnerConnectedAccount) {
+        // Busca sorteios DONE (que tiveram vencedor sorteado) do usuário
+        const doneGiveaways = await this.prisma.streamGiveaway.findMany({
+          where: {
+            userId: winnerConnectedAccount.userId,
+            status: 'DONE' as any,
+          },
+        });
+
+        // Para cada sorteio, verifica se há vencedor no Redis
+        for (const giveaway of doneGiveaways) {
+          const winner = await this.redisService.getWinner(giveaway.id);
+          
+          if (winner && 
+              winner.platform === ConnectedPlatform.TWITCH && 
+              winner.externalUserId === userId) {
+            // Esta mensagem é do vencedor! Salvar no Redis
+            await this.redisService.addWinnerMessage(giveaway.id, {
+              text: messageText,
+              timestamp: new Date().toISOString(),
+            });
+            
+            this.logger.log(`💬 Winner message saved: ${username} in giveaway ${giveaway.id}`);
+          }
+        }
+      }
+
       // ⚠️ IMPORTANTE: NÃO processar cheermotes aqui!
       // Cheermotes (ex: Cheer25) já são capturados pelo evento `channel.cheer`
       // Se processarmos aqui também, haverá duplicação

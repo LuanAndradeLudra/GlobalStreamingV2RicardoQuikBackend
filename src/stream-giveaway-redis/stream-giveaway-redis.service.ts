@@ -20,6 +20,25 @@ export interface ActiveGiveawayData {
 }
 
 /**
+ * Interface para dados do vencedor armazenados no Redis
+ */
+export interface WinnerData {
+  streamGiveawayId: string;
+  username: string;
+  platform: ConnectedPlatform;
+  externalUserId: string;
+  drawnAt: string;
+}
+
+/**
+ * Interface para mensagem do vencedor
+ */
+export interface WinnerMessage {
+  text: string;
+  timestamp: string;
+}
+
+/**
  * Service para gerenciar sorteios ativos no Redis
  * 
  * Estrutura de chaves no Redis:
@@ -36,6 +55,9 @@ export class StreamGiveawayRedisService {
   private readonly GIVEAWAY_PREFIX = 'giveaway:active';
   private readonly PARTICIPANTS_PREFIX = 'giveaway:participants';
   private readonly METRICS_PREFIX = 'giveaway:metrics';
+  private readonly WINNER_PREFIX = 'giveaway:winner';
+  private readonly WINNER_MESSAGES_PREFIX = 'giveaway:winner:messages';
+  private readonly WINNER_TTL = 60; // 60 segundos
 
   constructor(private readonly redis: RedisService) {}
 
@@ -287,6 +309,94 @@ export class StreamGiveawayRedisService {
    */
   private getMetricsKey(streamGiveawayId: string): string {
     return `${this.METRICS_PREFIX}:${streamGiveawayId}`;
+  }
+
+  /**
+   * Gera chave para dados do vencedor
+   */
+  private getWinnerKey(streamGiveawayId: string): string {
+    return `${this.WINNER_PREFIX}:${streamGiveawayId}`;
+  }
+
+  /**
+   * Gera chave para mensagens do vencedor
+   */
+  private getWinnerMessagesKey(streamGiveawayId: string): string {
+    return `${this.WINNER_MESSAGES_PREFIX}:${streamGiveawayId}`;
+  }
+
+  /**
+   * Salva dados do vencedor no Redis com TTL de 60 segundos
+   * Se já existir um vencedor, ele será sobrescrito
+   */
+  async setWinner(data: WinnerData): Promise<void> {
+    const key = this.getWinnerKey(data.streamGiveawayId);
+    const value = JSON.stringify(data);
+    
+    await this.redis.set(key, value, this.WINNER_TTL);
+    
+    this.logger.log(`🏆 Winner set for giveaway ${data.streamGiveawayId}: ${data.username} (${data.platform})`);
+  }
+
+  /**
+   * Busca dados do vencedor no Redis
+   * Retorna null se não encontrado ou se TTL expirou
+   */
+  async getWinner(streamGiveawayId: string): Promise<WinnerData | null> {
+    const key = this.getWinnerKey(streamGiveawayId);
+    const data = await this.redis.get(key);
+    
+    if (!data) {
+      return null;
+    }
+    
+    return JSON.parse(data);
+  }
+
+  /**
+   * Adiciona uma mensagem do vencedor ao Redis
+   * Também define TTL de 60 segundos para a lista de mensagens
+   */
+  async addWinnerMessage(streamGiveawayId: string, message: WinnerMessage): Promise<void> {
+    const key = this.getWinnerMessagesKey(streamGiveawayId);
+    const value = JSON.stringify(message);
+    
+    // Adiciona mensagem à lista (usando RPUSH para manter ordem cronológica)
+    await this.redis.rpush(key, value);
+    
+    // Define TTL de 60 segundos
+    await this.redis.expire(key, this.WINNER_TTL);
+    
+    this.logger.log(`💬 Winner message added for giveaway ${streamGiveawayId}: "${message.text.substring(0, 50)}..."`);
+  }
+
+  /**
+   * Busca todas as mensagens do vencedor
+   * Retorna array vazio se não houver mensagens ou se TTL expirou
+   */
+  async getWinnerMessages(streamGiveawayId: string): Promise<WinnerMessage[]> {
+    const key = this.getWinnerMessagesKey(streamGiveawayId);
+    const messages = await this.redis.lrange(key, 0, -1);
+    
+    if (!messages || messages.length === 0) {
+      return [];
+    }
+    
+    return messages.map(msg => JSON.parse(msg));
+  }
+
+  /**
+   * Remove dados do vencedor e suas mensagens
+   * Útil quando um novo sorteio começa
+   */
+  async removeWinner(streamGiveawayId: string): Promise<void> {
+    const winnerKey = this.getWinnerKey(streamGiveawayId);
+    const messagesKey = this.getWinnerMessagesKey(streamGiveawayId);
+    
+    await this.redis.del(winnerKey);
+    await this.redis.del(messagesKey);
+    
+    this.logger.log(`🗑️ Winner data removed for giveaway ${streamGiveawayId}`);
   }
 }
 

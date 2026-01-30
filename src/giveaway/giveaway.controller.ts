@@ -666,5 +666,55 @@ export class GiveawayController {
   ): Promise<DrawResponseDto> {
     return this.giveawayService.draw(user.id, id);
   }
+
+  @Get(':id/winner-messages')
+  @Public()
+  @ApiOperation({
+    summary: 'Get winner messages',
+    description:
+      'Returns all messages from the current winner of a giveaway. ' +
+      'Messages are stored in Redis with a TTL of 60 seconds after the winner is drawn. ' +
+      'Public endpoint, no authentication required.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Winner messages retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        winner: {
+          type: 'object',
+          nullable: true,
+          properties: {
+            streamGiveawayId: { type: 'string' },
+            username: { type: 'string' },
+            platform: { type: 'string' },
+            externalUserId: { type: 'string' },
+            drawnAt: { type: 'string' },
+          },
+        },
+        messages: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              text: { type: 'string' },
+              timestamp: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Stream giveaway not found',
+  })
+  async getWinnerMessages(@Param('id') id: string): Promise<{
+    winner: any;
+    messages: any[];
+  }> {
+    return this.giveawayService.getWinnerMessages(id);
+  }
 }
 

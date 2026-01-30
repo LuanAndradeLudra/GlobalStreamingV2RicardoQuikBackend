@@ -155,6 +155,22 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async keys(pattern: string): Promise<string[]> {
     return this.client.keys(pattern);
   }
+
+  /**
+   * Push value to the end of a list (right push)
+   */
+  async rpush(key: string, value: string): Promise<number> {
+    return this.client.rpush(key, value);
+  }
+
+  /**
+   * Get range of elements from a list
+   * @param start - start index (0-based)
+   * @param stop - stop index (-1 for all elements)
+   */
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    return this.client.lrange(key, start, stop);
+  }
 }
 
 
