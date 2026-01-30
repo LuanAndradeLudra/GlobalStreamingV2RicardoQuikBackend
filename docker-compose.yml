@@ -3,10 +3,10 @@ version: "3.9"
 services:
   db:
     image: postgres:16-alpine
-    container_name: trully-postgres
+    container_name: ricardoquiksorteio-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: trullygiveaway
+      POSTGRES_DB: ricardoquiksorteio
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: vF72HBUWL3)!
     volumes:
@@ -16,7 +16,7 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4
-    container_name: trully-pgadmin
+    container_name: ricardoquiksorteio-pgadmin
     restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@local.com
@@ -30,10 +30,10 @@ services:
 
   api:
     build: .
-    container_name: trully-api
+    container_name: ricardoquiksorteio-api
     command: npm run start:dev
     environment:
-      DATABASE_URL: postgresql://postgres:vF72HBUWL3%29%21@db:5432/trullygiveaway?schema=public
+      DATABASE_URL: postgresql://postgres:vF72HBUWL3%29%21@db:5432/ricardoquiksorteio?schema=public
       PORT: 3000
     ports:
       - "3000:3000"
@@ -51,5 +51,5 @@ networks:
 
 volumes:
   pgdata:
-    name: gamerdubrasil_pgdata
+    name: ricardoquiksorteio_pgdata
   api_node_modules:

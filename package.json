@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "Trully Giveaway backend service",
+  "description": "Ricardo Quik Sorteios backend service",
   "private": true,
   "main": "dist/main.js",
   "scripts": {
