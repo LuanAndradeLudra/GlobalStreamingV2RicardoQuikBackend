@@ -388,7 +388,6 @@ twIDAQAB
               totalGiftSubs: giftSubs,
             });
 
-            if (ticketInfo.giftTickets > 0) {
               // Adiciona participante ao banco de dados (entrada por GIFT_SUB)
               const participantGiftSub = await this.giveawayService.addParticipant(
                 activeGiveaway.userId,
@@ -439,7 +438,6 @@ twIDAQAB
             }
           }
         }
-      }
 
       // Log consolidado: userId e entradas adicionadas
       if (entriesAdded.length > 0) {

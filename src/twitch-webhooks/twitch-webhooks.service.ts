@@ -442,7 +442,6 @@ export class TwitchWebhooksService {
               totalGiftSubs: giftSubAmount,
             });
 
-            if (ticketInfo.giftTickets > 0) {
               // Adiciona participante ao banco de dados (entrada por GIFT_SUB)
               const participantGiftSub = await this.giveawayService.addParticipant(
                 activeGiveaway.userId,
@@ -493,7 +492,6 @@ export class TwitchWebhooksService {
             }
           }
         }
-      }
 
       // Log consolidado: userId e entradas adicionadas
       if (entriesAdded.length > 0) {
