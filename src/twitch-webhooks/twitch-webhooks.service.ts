@@ -6,6 +6,7 @@ import { RealtimeGateway } from '../realtime-gateway/realtime-gateway.gateway';
 import { GiveawayService } from '../giveaway/giveaway.service';
 import { TwitchService } from '../twitch/twitch.service';
 import { ConnectedPlatform, EntryMethod } from '@prisma/client';
+import { DateRangeHelper } from '../utils/date-range.helper';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -541,9 +542,9 @@ export class TwitchWebhooksService {
 
   /**
    * Busca quantidade de gift subs doados por um usuário em um período
-   * Usa o endpoint /subscriptions com paginação e filtra por gifter_id
    * 
-   * Nota: A API da Twitch não tem filtro de data, então retorna todas as gift subs ativas
+   * Para DAILY: Busca do banco de dados (Event table)
+   * Para WEEKLY/MONTHLY: Usa a API da Twitch (endpoint /subscriptions)
    */
   private async getGiftSubsForUser(
     adminUserId: string,
@@ -552,6 +553,42 @@ export class TwitchWebhooksService {
     donationWindow: string,
   ): Promise<number> {
     try {
+      // Se for DAILY, busca do banco de dados (Event table)
+      if (donationWindow === 'DAILY') {
+        const { start, end } = DateRangeHelper.getDailyRange();
+        
+        this.logger.log(`📅 [Twitch Gift Subs] Fetching DAILY from database for userId ${userId}`);
+        
+        // Busca eventos de gift subs do usuário no período diário
+        const results = await this.prisma.event.groupBy({
+          by: ['externalUserId'],
+          where: {
+            userId: adminUserId,
+            platform: ConnectedPlatform.TWITCH,
+            eventType: 'GIFT_SUBSCRIPTION',
+            externalUserId: userId,
+            eventDate: {
+              gte: start,
+              lt: end,
+            },
+          },
+          _sum: {
+            amount: true,
+          },
+        });
+
+        // Se encontrou resultados, retorna a soma dos amounts
+        if (results.length > 0 && results[0]._sum.amount) {
+          const giftSubCount = results[0]._sum.amount;
+          this.logger.log(`📊 [Twitch Gift Subs] Found ${giftSubCount} gift subs from user ${userId} in DAILY window`);
+          return giftSubCount;
+        }
+
+        this.logger.log(`📊 [Twitch Gift Subs] No gift subs found for user ${userId} in DAILY window`);
+        return 0;
+      }
+
+      // Para WEEKLY/MONTHLY, usa a API da Twitch
       // Busca todas as gift subs ativas deste gifter
       const giftSubCount = await this.twitchService.getGiftedSubsByGifter(
         adminUserId,
@@ -567,6 +604,7 @@ export class TwitchWebhooksService {
       return giftSubCount;
     } catch (error) {
       this.logger.error(`❌ [Twitch] Error fetching gift subs for userId ${userId}:`, error);
+      this.logger.error(`❌ [Twitch] Error details:`, error instanceof Error ? error.stack : String(error));
       return 0;
     }
   }
