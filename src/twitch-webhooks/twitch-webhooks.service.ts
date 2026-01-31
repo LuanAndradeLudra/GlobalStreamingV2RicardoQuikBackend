@@ -495,8 +495,39 @@ export class TwitchWebhooksService {
       // Calcula período baseado na donation window
       const period = this.mapDonationWindowToPeriod(donationWindow);
       
-      // Busca leaderboard de bits
-      const leaderboard = await this.twitchService.getBitsLeaderboard(adminUserId, period);
+      // Calcula started_at seguindo a mesma lógica do frontend
+      // Para DAILY: current day + 1 at 00:00 UTC-3 (Twitch API returns data for the day BEFORE the started_at)
+      let startedAt: string | undefined;
+      
+      if (donationWindow === 'DAILY') {
+        const now = new Date();
+        // Converte para horário do Brasil (America/Sao_Paulo = UTC-3)
+        const brazilTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+        brazilTime.setDate(brazilTime.getDate() + 1); // +1 day
+        brazilTime.setHours(0, 0, 0, 0);
+        startedAt = brazilTime.toISOString();
+        
+        this.logger.log(`📅 [Twitch Bits] DAILY window - calculated started_at: ${startedAt}`);
+      } else if (donationWindow === 'WEEKLY') {
+        // For WEEKLY: get the current Monday + 7 days (next Monday)
+        const now = new Date();
+        const brazilTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+        const dayOfWeek = brazilTime.getDay();
+        const daysUntilMonday = dayOfWeek === 0 ? 1 : (8 - dayOfWeek); // Days until next Monday
+        brazilTime.setDate(brazilTime.getDate() + daysUntilMonday);
+        brazilTime.setHours(0, 0, 0, 0);
+        startedAt = brazilTime.toISOString();
+      } else if (donationWindow === 'MONTHLY') {
+        // For MONTHLY: first day of current month + 1 month
+        const now = new Date();
+        const brazilTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+        const firstDayNextMonth = new Date(brazilTime.getFullYear(), brazilTime.getMonth() + 1, 1);
+        firstDayNextMonth.setHours(0, 0, 0, 0);
+        startedAt = firstDayNextMonth.toISOString();
+      }
+      
+      // Busca leaderboard de bits com started_at calculado
+      const leaderboard = await this.twitchService.getBitsLeaderboard(adminUserId, period, startedAt);
       
       // Encontra o usuário no leaderboard
       const userEntry = leaderboard?.data?.find((entry: any) => entry.user_id === userId);
