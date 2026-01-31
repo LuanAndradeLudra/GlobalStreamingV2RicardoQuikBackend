@@ -346,65 +346,54 @@ export class TwitchWebhooksService {
             bitsConfig.donationWindow,
           );
 
+          // Se o usuário doou bits, ele recebe 2 tickets fixos (independente do valor doado)
           if (bitsAmount > 0) {
-            // Calcula tickets baseado nas regras de doação (ONLY donation, no base role tickets)
-            const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
+            // Adiciona participante ao banco de dados (entrada por BITS)
+            const participantBits = await this.giveawayService.addParticipant(
+              activeGiveaway.userId,
+              activeGiveaway.streamGiveawayId,
+              {
+                platform: ConnectedPlatform.TWITCH,
+                externalUserId: userId,
+                username: username,
+                avatarUrl: avatarUrl,
+                method: EntryMethod.BITS,
+                tickets: 2, // 2 tickets fixos para qualquer doação de bits
+                metadata: {
+                  bitsAmount,
+                  donationWindow: bitsConfig.donationWindow,
+                },
+              },
+            );
+
+            // Marca no Redis para dedupe
+            await this.redisService.markParticipant(
+              activeGiveaway.streamGiveawayId,
+              ConnectedPlatform.TWITCH,
+              userId,
+              EntryMethod.BITS,
+            );
+
+            // Incrementa métrica
+            await this.redisService.incrementMetric(
+              activeGiveaway.streamGiveawayId,
+              'total_participants',
+            );
+
+            // Broadcast
+            this.realtimeGateway.emitParticipantAdded({
               streamGiveawayId: activeGiveaway.streamGiveawayId,
-              platform: ConnectedPlatform.TWITCH,
-              adminUserId: activeGiveaway.userId,
-              role: 'NON_SUB', // Use NON_SUB to ensure baseTickets = 0
-              totalBits: bitsAmount,
+              participant: {
+                id: participantBits.id,
+                username: participantBits.username,
+                platform: participantBits.platform,
+                method: participantBits.method,
+                tickets: participantBits.tickets,
+                avatarUrl: participantBits.avatarUrl || undefined,
+              },
             });
 
-            if (ticketInfo.bitsTickets > 0) {
-              // Adiciona participante ao banco de dados (entrada por BITS)
-              const participantBits = await this.giveawayService.addParticipant(
-                activeGiveaway.userId,
-                activeGiveaway.streamGiveawayId,
-                {
-                  platform: ConnectedPlatform.TWITCH,
-                  externalUserId: userId,
-                  username: username,
-                  avatarUrl: avatarUrl,
-                  method: EntryMethod.BITS,
-                  // tickets: ticketInfo.bitsTickets,
-                  tickets: 2,
-                  metadata: {
-                    bitsAmount,
-                    donationWindow: bitsConfig.donationWindow,
-                  },
-                },
-              );
-
-              // Marca no Redis para dedupe
-              await this.redisService.markParticipant(
-                activeGiveaway.streamGiveawayId,
-                ConnectedPlatform.TWITCH,
-                userId,
-                EntryMethod.BITS,
-              );
-
-              // Incrementa métrica
-              await this.redisService.incrementMetric(
-                activeGiveaway.streamGiveawayId,
-                'total_participants',
-              );
-
-              // Broadcast
-              this.realtimeGateway.emitParticipantAdded({
-                streamGiveawayId: activeGiveaway.streamGiveawayId,
-                participant: {
-                  id: participantBits.id,
-                  username: participantBits.username,
-                  platform: participantBits.platform,
-                  method: participantBits.method,
-                  tickets: participantBits.tickets,
-                  avatarUrl: participantBits.avatarUrl || undefined,
-                },
-              });
-
-              entriesAdded.push(`BITS (${ticketInfo.bitsTickets} tickets)`);
-            }
+            entriesAdded.push(`BITS (2 tickets)`);
           }
         }
       }
@@ -432,66 +421,57 @@ export class TwitchWebhooksService {
             giftSubConfig.donationWindow,
           );
 
+          // Se o usuário doou gift subs, ele recebe 2 tickets fixos (independente da quantidade doada)
           if (giftSubAmount > 0) {
-            // Calcula tickets baseado nas regras de doação (ONLY donation, no base role tickets)
-            const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
+            // Adiciona participante ao banco de dados (entrada por GIFT_SUB)
+            const participantGiftSub = await this.giveawayService.addParticipant(
+              activeGiveaway.userId,
+              activeGiveaway.streamGiveawayId,
+              {
+                platform: ConnectedPlatform.TWITCH,
+                externalUserId: userId,
+                username: username,
+                avatarUrl: avatarUrl,
+                method: EntryMethod.GIFT_SUB,
+                tickets: 2, // 2 tickets fixos para qualquer doação de gift subs
+                metadata: {
+                  giftSubAmount,
+                  donationWindow: giftSubConfig.donationWindow,
+                },
+              },
+            );
+
+            // Marca no Redis para dedupe
+            await this.redisService.markParticipant(
+              activeGiveaway.streamGiveawayId,
+              ConnectedPlatform.TWITCH,
+              userId,
+              EntryMethod.GIFT_SUB,
+            );
+
+            // Incrementa métrica
+            await this.redisService.incrementMetric(
+              activeGiveaway.streamGiveawayId,
+              'total_participants',
+            );
+
+            // Broadcast
+            this.realtimeGateway.emitParticipantAdded({
               streamGiveawayId: activeGiveaway.streamGiveawayId,
-              platform: ConnectedPlatform.TWITCH,
-              adminUserId: activeGiveaway.userId,
-              role: 'NON_SUB', // Use NON_SUB to ensure baseTickets = 0
-              totalGiftSubs: giftSubAmount,
+              participant: {
+                id: participantGiftSub.id,
+                username: participantGiftSub.username,
+                platform: participantGiftSub.platform,
+                method: participantGiftSub.method,
+                tickets: participantGiftSub.tickets,
+                avatarUrl: participantGiftSub.avatarUrl || undefined,
+              },
             });
 
-              // Adiciona participante ao banco de dados (entrada por GIFT_SUB)
-              const participantGiftSub = await this.giveawayService.addParticipant(
-                activeGiveaway.userId,
-                activeGiveaway.streamGiveawayId,
-                {
-                  platform: ConnectedPlatform.TWITCH,
-                  externalUserId: userId,
-                  username: username,
-                  avatarUrl: avatarUrl,
-                  method: EntryMethod.GIFT_SUB,
-                  // tickets: ticketInfo.giftTickets,
-                  tickets: 2,
-                  metadata: {
-                    giftSubAmount,
-                    donationWindow: giftSubConfig.donationWindow,
-                  },
-                },
-              );
-
-              // Marca no Redis para dedupe
-              await this.redisService.markParticipant(
-                activeGiveaway.streamGiveawayId,
-                ConnectedPlatform.TWITCH,
-                userId,
-                EntryMethod.GIFT_SUB,
-              );
-
-              // Incrementa métrica
-              await this.redisService.incrementMetric(
-                activeGiveaway.streamGiveawayId,
-                'total_participants',
-              );
-
-              // Broadcast
-              this.realtimeGateway.emitParticipantAdded({
-                streamGiveawayId: activeGiveaway.streamGiveawayId,
-                participant: {
-                  id: participantGiftSub.id,
-                  username: participantGiftSub.username,
-                  platform: participantGiftSub.platform,
-                  method: participantGiftSub.method,
-                  tickets: participantGiftSub.tickets,
-                  avatarUrl: participantGiftSub.avatarUrl || undefined,
-                },
-              });
-
-              entriesAdded.push(`GIFT_SUB (${ticketInfo.giftTickets} tickets)`);
-            }
+            entriesAdded.push(`GIFT_SUB (2 tickets)`);
           }
         }
+      }
 
       // Log consolidado: userId e entradas adicionadas
       if (entriesAdded.length > 0) {

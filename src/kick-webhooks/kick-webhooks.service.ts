@@ -292,65 +292,54 @@ twIDAQAB
             kickCoinsConfig.donationWindow as DonationWindow,
           );
 
+          // Se o usuário doou kick coins, ele recebe 2 tickets fixos (independente do valor doado)
           if (kickCoins > 0) {
-            // Calcula tickets baseado nas regras de doação (ONLY donation, no base role tickets)
-            const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
+            // Adiciona participante ao banco de dados (entrada por KICK_COINS)
+            const participantKickCoins = await this.giveawayService.addParticipant(
+              activeGiveaway.userId,
+              activeGiveaway.streamGiveawayId,
+              {
+                platform: ConnectedPlatform.KICK,
+                externalUserId: userId,
+                username: username,
+                avatarUrl: avatarUrl,
+                method: EntryMethod.KICK_COINS,
+                tickets: 2, // 2 tickets fixos para qualquer doação de kick coins
+                metadata: {
+                  kickCoins,
+                  donationWindow: kickCoinsConfig.donationWindow,
+                },
+              },
+            );
+
+            // Marca no Redis para dedupe
+            await this.redisService.markParticipant(
+              activeGiveaway.streamGiveawayId,
+              ConnectedPlatform.KICK,
+              userId,
+              EntryMethod.KICK_COINS,
+            );
+
+            // Incrementa métrica
+            await this.redisService.incrementMetric(
+              activeGiveaway.streamGiveawayId,
+              'total_participants',
+            );
+
+            // Broadcast
+            this.realtimeGateway.emitParticipantAdded({
               streamGiveawayId: activeGiveaway.streamGiveawayId,
-              platform: ConnectedPlatform.KICK,
-              adminUserId: activeGiveaway.userId,
-              role: 'NON_SUB', // Use NON_SUB to ensure baseTickets = 0
-              totalKickCoins: kickCoins,
+              participant: {
+                id: participantKickCoins.id,
+                username: participantKickCoins.username,
+                platform: participantKickCoins.platform,
+                method: participantKickCoins.method,
+                tickets: participantKickCoins.tickets,
+                avatarUrl: participantKickCoins.avatarUrl || undefined,
+              },
             });
 
-            if (ticketInfo.kickCoinsTickets > 0) {
-              // Adiciona participante ao banco de dados (entrada por KICK_COINS)
-              const participantKickCoins = await this.giveawayService.addParticipant(
-                activeGiveaway.userId,
-                activeGiveaway.streamGiveawayId,
-                {
-                  platform: ConnectedPlatform.KICK,
-                  externalUserId: userId,
-                  username: username,
-                  avatarUrl: avatarUrl,
-                  method: EntryMethod.KICK_COINS,
-                  // tickets: ticketInfo.kickCoinsTickets,
-                  tickets: 2,
-                  metadata: {
-                    kickCoins,
-                    donationWindow: kickCoinsConfig.donationWindow,
-                  },
-                },
-              );
-
-              // Marca no Redis para dedupe
-              await this.redisService.markParticipant(
-                activeGiveaway.streamGiveawayId,
-                ConnectedPlatform.KICK,
-                userId,
-                EntryMethod.KICK_COINS,
-              );
-
-              // Incrementa métrica
-              await this.redisService.incrementMetric(
-                activeGiveaway.streamGiveawayId,
-                'total_participants',
-              );
-
-              // Broadcast
-              this.realtimeGateway.emitParticipantAdded({
-                streamGiveawayId: activeGiveaway.streamGiveawayId,
-                participant: {
-                  id: participantKickCoins.id,
-                  username: participantKickCoins.username,
-                  platform: participantKickCoins.platform,
-                  method: participantKickCoins.method,
-                  tickets: participantKickCoins.tickets,
-                  avatarUrl: participantKickCoins.avatarUrl || undefined,
-                },
-              });
-
-              entriesAdded.push(`KICK_COINS (${ticketInfo.kickCoinsTickets} tickets)`);
-            }
+            entriesAdded.push(`KICK_COINS (2 tickets)`);
           }
         }
       }
@@ -378,66 +367,57 @@ twIDAQAB
             giftSubConfig.donationWindow as DonationWindow,
           );
 
+          // Se o usuário doou gift subs, ele recebe 2 tickets fixos (independente da quantidade doada)
           if (giftSubs > 0) {
-            // Calcula tickets baseado nas regras de doação (ONLY donation, no base role tickets)
-            const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
+            // Adiciona participante ao banco de dados (entrada por GIFT_SUB)
+            const participantGiftSub = await this.giveawayService.addParticipant(
+              activeGiveaway.userId,
+              activeGiveaway.streamGiveawayId,
+              {
+                platform: ConnectedPlatform.KICK,
+                externalUserId: userId,
+                username: username,
+                avatarUrl: avatarUrl,
+                method: EntryMethod.GIFT_SUB,
+                tickets: 2, // 2 tickets fixos para qualquer doação de gift subs
+                metadata: {
+                  giftSubAmount: giftSubs,
+                  donationWindow: giftSubConfig.donationWindow,
+                },
+              },
+            );
+
+            // Marca no Redis para dedupe
+            await this.redisService.markParticipant(
+              activeGiveaway.streamGiveawayId,
+              ConnectedPlatform.KICK,
+              userId,
+              EntryMethod.GIFT_SUB,
+            );
+
+            // Incrementa métrica
+            await this.redisService.incrementMetric(
+              activeGiveaway.streamGiveawayId,
+              'total_participants',
+            );
+
+            // Broadcast
+            this.realtimeGateway.emitParticipantAdded({
               streamGiveawayId: activeGiveaway.streamGiveawayId,
-              platform: ConnectedPlatform.KICK,
-              adminUserId: activeGiveaway.userId,
-              role: 'NON_SUB', // Use NON_SUB to ensure baseTickets = 0
-              totalGiftSubs: giftSubs,
+              participant: {
+                id: participantGiftSub.id,
+                username: participantGiftSub.username,
+                platform: participantGiftSub.platform,
+                method: participantGiftSub.method,
+                tickets: participantGiftSub.tickets,
+                avatarUrl: participantGiftSub.avatarUrl || undefined,
+              },
             });
 
-              // Adiciona participante ao banco de dados (entrada por GIFT_SUB)
-              const participantGiftSub = await this.giveawayService.addParticipant(
-                activeGiveaway.userId,
-                activeGiveaway.streamGiveawayId,
-                {
-                  platform: ConnectedPlatform.KICK,
-                  externalUserId: userId,
-                  username: username,
-                  avatarUrl: avatarUrl,
-                  method: EntryMethod.GIFT_SUB,
-                  // tickets: ticketInfo.giftTickets,
-                  tickets: 2,
-                  metadata: {
-                    giftSubAmount: giftSubs,
-                    donationWindow: giftSubConfig.donationWindow,
-                  },
-                },
-              );
-
-              // Marca no Redis para dedupe
-              await this.redisService.markParticipant(
-                activeGiveaway.streamGiveawayId,
-                ConnectedPlatform.KICK,
-                userId,
-                EntryMethod.GIFT_SUB,
-              );
-
-              // Incrementa métrica
-              await this.redisService.incrementMetric(
-                activeGiveaway.streamGiveawayId,
-                'total_participants',
-              );
-
-              // Broadcast
-              this.realtimeGateway.emitParticipantAdded({
-                streamGiveawayId: activeGiveaway.streamGiveawayId,
-                participant: {
-                  id: participantGiftSub.id,
-                  username: participantGiftSub.username,
-                  platform: participantGiftSub.platform,
-                  method: participantGiftSub.method,
-                  tickets: participantGiftSub.tickets,
-                  avatarUrl: participantGiftSub.avatarUrl || undefined,
-                },
-              });
-
-              entriesAdded.push(`GIFT_SUB (${ticketInfo.giftTickets} tickets)`);
-            }
+            entriesAdded.push(`GIFT_SUB (2 tickets)`);
           }
         }
+      }
 
       // Log consolidado: userId e entradas adicionadas
       if (entriesAdded.length > 0) {
