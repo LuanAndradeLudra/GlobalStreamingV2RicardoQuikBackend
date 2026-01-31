@@ -336,7 +336,7 @@ export class IntegratedGiftSubsGiveawayService {
     const allParticipants = [...twitchParticipants, ...kickParticipants];
 
     // Allow at least 2 participants total (can be from one platform only)
-    if (allParticipants.length < 2) {
+    if (allParticipants.length <= 2) {
       throw new BadRequestException(`É necessário pelo menos 2 participantes para criar o sorteio. Atualmente há ${allParticipants.length} participante(s) com tickets > 0.`);
     }
 

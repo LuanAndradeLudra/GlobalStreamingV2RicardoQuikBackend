@@ -333,7 +333,7 @@ export class IntegratedBitsKickCoinsGiveawayService {
 
     // Validate minimum participants (at least 2 total from both platforms)
     const totalParticipants = twitchParticipants.length + kickParticipants.length;
-    if (totalParticipants < 2) {
+    if (totalParticipants <= 2) {
       throw new BadRequestException(`É necessário pelo menos 2 participantes para criar o sorteio. Atualmente há ${totalParticipants} participante(s) com tickets > 0.`);
     }
 
