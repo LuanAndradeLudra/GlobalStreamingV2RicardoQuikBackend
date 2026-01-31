@@ -367,7 +367,8 @@ export class TwitchWebhooksService {
                   username: username,
                   avatarUrl: avatarUrl,
                   method: EntryMethod.BITS,
-                  tickets: ticketInfo.bitsTickets,
+                  // tickets: ticketInfo.bitsTickets,
+                  tickets: 2,
                   metadata: {
                     bitsAmount,
                     donationWindow: bitsConfig.donationWindow,
@@ -452,7 +453,8 @@ export class TwitchWebhooksService {
                   username: username,
                   avatarUrl: avatarUrl,
                   method: EntryMethod.GIFT_SUB,
-                  tickets: ticketInfo.giftTickets,
+                  // tickets: ticketInfo.giftTickets,
+                  tickets: 2,
                   metadata: {
                     giftSubAmount,
                     donationWindow: giftSubConfig.donationWindow,

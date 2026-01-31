@@ -313,7 +313,8 @@ twIDAQAB
                   username: username,
                   avatarUrl: avatarUrl,
                   method: EntryMethod.KICK_COINS,
-                  tickets: ticketInfo.kickCoinsTickets,
+                  // tickets: ticketInfo.kickCoinsTickets,
+                  tickets: 2,
                   metadata: {
                     kickCoins,
                     donationWindow: kickCoinsConfig.donationWindow,
@@ -398,7 +399,8 @@ twIDAQAB
                   username: username,
                   avatarUrl: avatarUrl,
                   method: EntryMethod.GIFT_SUB,
-                  tickets: ticketInfo.giftTickets,
+                  // tickets: ticketInfo.giftTickets,
+                  tickets: 2,
                   metadata: {
                     giftSubAmount: giftSubs,
                     donationWindow: giftSubConfig.donationWindow,
