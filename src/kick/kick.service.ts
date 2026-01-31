@@ -145,13 +145,15 @@ export class KickService {
       // If channelName is 'self', use the connected account's channel name
       const resolvedChannelName = channelName === 'self' ? connectedChannelName : channelName;
 
+      // Get Cloudflare cookies first
+      await this.getCloudflareCookies();
+
       const headers: Record<string, string> = {
-        Authorization: `Bearer ${accessToken}`,
         Accept: 'application/json, text/plain, */*',
         Origin: 'https://kick.com',
         Referer: `https://kick.com/${resolvedChannelName}`,
-        'User-Agent': browserHeaders['user-agent'],
-        'Accept-Language': browserHeaders['accept-language'],
+        'User-Agent': browserHeaders['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept-Language': browserHeaders['accept-language'] || 'en-US,en;q=0.9',
       };
 
       const response = await this.axiosInstance.get(
@@ -163,7 +165,43 @@ export class KickService {
 
       return response.data;
     } catch (error: any) {
+      // If we get 403, try to refresh cookies and retry once
+      if (error.response?.status === 403) {
+        console.log('🔄 [Kick API] Got 403 for leaderboard, refreshing Cloudflare cookies and retrying...');
+        await this.getCloudflareCookies();
+
+        try {
+          const { accessToken, channelName: connectedChannelName } = await this.getKickAccount(userId);
+          const resolvedChannelName = channelName === 'self' ? connectedChannelName : channelName;
+
+          const retryResponse = await this.axiosInstance.get(
+            `${this.kickApiV2Url}/channels/${resolvedChannelName}/leaderboards`,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: 'application/json, text/plain, */*',
+                Origin: 'https://kick.com',
+                Referer: `https://kick.com/${resolvedChannelName}`,
+                'User-Agent': browserHeaders['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept-Language': browserHeaders['accept-language'] || 'en-US,en;q=0.9',
+              },
+            },
+          );
+
+          return retryResponse.data;
+        } catch (retryError: any) {
+          const errorText = JSON.stringify(retryError.response?.data || retryError.message);
+          console.error('❌ [Kick API] Error response after retry:', errorText);
+          throw new BadRequestException(`Failed to fetch gift subs leaderboard: ${errorText}`);
+        }
+      }
+
       console.error('Error fetching gift subs leaderboard:', error);
+      if (error.response) {
+        const errorText = JSON.stringify(error.response.data || error.response.statusText);
+        throw new BadRequestException(`Failed to fetch gift subs leaderboard: ${errorText}`);
+      }
+      throw error;
     }
   }
 
