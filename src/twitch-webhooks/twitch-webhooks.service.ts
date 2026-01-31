@@ -348,7 +348,7 @@ export class TwitchWebhooksService {
           );
 
           // Se o usuário doou bits, ele recebe 2 tickets fixos (independente do valor doado)
-          if (bitsAmount > 0) {
+          if (bitsAmount >= 50) {
             // Adiciona participante ao banco de dados (entrada por BITS)
             const participantBits = await this.giveawayService.addParticipant(
               activeGiveaway.userId,
