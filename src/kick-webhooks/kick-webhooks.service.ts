@@ -99,61 +99,86 @@ twIDAQAB
    * Process chat message event
    */
   async processChatMessage(event: any): Promise<void> {
+    const userId = event.sender?.user_id?.toString() || 'unknown';
+    
     try {
       const message = event.content?.trim() || '';
-      const userId = event.sender?.user_id?.toString();
       const username = event.sender?.username;
       const avatarUrl = event.sender?.profile_picture;
+      const broadcasterUserId = event.broadcaster?.user_id?.toString();
 
-      this.logger.log(`👤 [Kick] From: ${username} (ID: ${userId})`);
-
-      if (!message || !userId) {
-        this.logger.warn('⚠️ [Kick] Missing required fields');
+      if (!message || !username || !userId || !broadcasterUserId) {
         return;
       }
 
-      // 1️⃣ Find connected account to get channelId
-      // Kick webhooks don't include channelId directly, so we need to find it
-      // by searching all KICK connected accounts and matching with active giveaways
-      const connectedAccounts = await this.prisma.connectedAccount.findMany({
+      // 🏆 Verifica se há vencedor ativo e salva a mensagem no Redis
+      // Busca por todos os sorteios ativos desta plataforma/canal
+      const winnerConnectedAccount = await this.prisma.connectedAccount.findFirst({
         where: {
           platform: ConnectedPlatform.KICK,
+          externalChannelId: broadcasterUserId,
         },
       });
 
-      if (connectedAccounts.length === 0) {
+      if (winnerConnectedAccount) {
+        // Busca sorteios DONE (que tiveram vencedor sorteado) do usuário
+        const doneGiveaways = await this.prisma.streamGiveaway.findMany({
+          where: {
+            userId: winnerConnectedAccount.userId,
+            status: 'DONE' as any,
+          },
+        });
+
+        // Para cada sorteio, verifica se há vencedor no Redis
+        for (const giveaway of doneGiveaways) {
+          const winner = await this.redisService.getWinner(giveaway.id);
+          
+          if (winner && 
+              winner.platform === ConnectedPlatform.KICK && 
+              winner.externalUserId === userId) {
+            // Esta mensagem é do vencedor! Salvar no Redis
+            await this.redisService.addWinnerMessage(giveaway.id, {
+              text: message,
+              timestamp: new Date().toISOString(),
+            });
+            
+            this.logger.log(`💬 Winner message saved: ${username} in giveaway ${giveaway.id}`);
+          }
+        }
+      }
+
+      // Mapeia broadcasterUserId (Kick) → userId (nosso sistema)
+      const connectedAccount = await this.prisma.connectedAccount.findFirst({
+        where: {
+          platform: ConnectedPlatform.KICK,
+          externalChannelId: broadcasterUserId,
+        },
+      });
+
+      if (!connectedAccount) {
         return;
       }
 
-      // 2️⃣ Search for active giveaway by keyword in Redis using channelId
-      // Try each connected account's channelId until we find a matching giveaway
-      let activeGiveaway: any = null;
+      const adminUserId = connectedAccount.userId;
 
-      for (const account of connectedAccounts) {
-        const channelId = account.externalChannelId;
-        
-        // Use the new Redis service method with channelId
-        const giveaway = await this.redisService.findActiveGiveawayByKeyword(
-          ConnectedPlatform.KICK,
-          channelId,
-          message,
-        );
-
-        if (giveaway) {
-          activeGiveaway = giveaway;
-          break;
-        }
-      }
+      // Busca sorteio ativo por palavra-chave na mensagem usando channelId
+      // channelId = broadcasterUserId (Kick channel ID)
+      const activeGiveaway = await this.redisService.findActiveGiveawayByKeyword(
+        ConnectedPlatform.KICK,
+        broadcasterUserId, // channelId
+        message,
+      );
 
       if (!activeGiveaway) {
         return;
       }
 
-      // adminUserId vem do activeGiveaway.userId (salvo no Redis)
-      const adminUserId = activeGiveaway.userId;
+      // Incrementa métrica de mensagens processadas
+      await this.redisService.incrementMetric(
+        activeGiveaway.streamGiveawayId,
+        'total_messages_processed',
+      );
 
-      // 3️⃣ Check if user is subscriber (Kick doesn't have public API for this yet)
-      // For now, we'll assume NON_SUB unless we can detect from identity.badges
       let role = 'KICK_NON_SUB';
       let method: EntryMethod = EntryMethod.KICK_NON_SUB;
 
@@ -166,101 +191,101 @@ twIDAQAB
         method = EntryMethod.KICK_SUB;
       }
 
-      // 4️⃣ Check if role is allowed in this giveaway
+      // Track entries added for this user
+      const entriesAdded: string[] = [];
+
+      // Verifica se o role está permitido neste sorteio
       if (!activeGiveaway.allowedRoles.includes(role)) {
-        return;
-      }
+        // Não retorna - ainda pode ter entradas de doações (kick coins/gift subs)
+        // Mas não adiciona entrada por tier/role
+      } else {
+        // Verifica dedupe - usuário já participou COM ESTE MÉTODO?
+        // Nota: Mesmo usuário pode ter múltiplas entradas (tier + kick coins + gift subs)
+        const isDuplicateTier = await this.redisService.checkDuplicate(
+          activeGiveaway.streamGiveawayId,
+          ConnectedPlatform.KICK,
+          userId,
+          method, // Verifica se já entrou com este tier específico
+        );
 
-      // 5️⃣ Deduplication check for base role
-      const isDuplicateTier = await this.redisService.checkDuplicate(
-        activeGiveaway.streamGiveawayId,
-        ConnectedPlatform.KICK,
-        userId,
-        method,
-      );
-
-      if (isDuplicateTier) {
-        return;
-      }
-
-      // ✅ Add entry by TIER/ROLE (if not duplicate)
-      if (!isDuplicateTier) {
-        // Get ticket configuration for this role
-        const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
-          streamGiveawayId: activeGiveaway.streamGiveawayId,
-          platform: ConnectedPlatform.KICK,
-          adminUserId: activeGiveaway.userId,
-          role: role,
-        });
-
-        if (ticketInfo.totalTickets === 0) {
-          this.logger.log(`⚠️ User ${username} has 0 tickets for role ${role} (role not allowed or no rules configured)`);
-        } else {
-          // Add participant to database (entry by tier/role)
-          const participantTier = await this.giveawayService.addParticipant(
-            activeGiveaway.userId,
-            activeGiveaway.streamGiveawayId,
-            {
-              platform: ConnectedPlatform.KICK,
-              externalUserId: userId,
-              username: username,
-              avatarUrl: avatarUrl,
-              method: method,
-              tickets: ticketInfo.totalTickets,
-              metadata: {
-                role,
-                baseTickets: ticketInfo.baseTickets,
-              },
-            },
-          );
-
-          this.logger.log(`✅ [Kick] Participant added: ${username} with ${ticketInfo.totalTickets} tickets (${method})`);
-
-          // Mark participant in Redis
-          await this.redisService.markParticipant(
-            activeGiveaway.streamGiveawayId,
-            ConnectedPlatform.KICK,
-            userId,
-            method,
-          );
-
-          // Increment metrics
-          await this.redisService.incrementMetric(
-            activeGiveaway.streamGiveawayId,
-            'total_participants',
-          );
-
-          // Broadcast to frontend
-          this.realtimeGateway.emitParticipantAdded({
+        // ✅ Adiciona entrada por TIER (se não duplicado)
+        if (!isDuplicateTier) {
+          // Calcula tickets baseado nas regras do sorteio (tier)
+          const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
             streamGiveawayId: activeGiveaway.streamGiveawayId,
-            participant: {
-              id: participantTier.id,
-              username: participantTier.username,
-              platform: participantTier.platform,
-              method: participantTier.method,
-              tickets: participantTier.tickets,
-              avatarUrl: participantTier.avatarUrl || undefined,
-            },
+            platform: ConnectedPlatform.KICK,
+            adminUserId: activeGiveaway.userId,
+            role: role,
           });
+
+          if (ticketInfo.totalTickets > 0) {
+            // Adiciona participante ao banco de dados (entrada por tier)
+            const participantTier = await this.giveawayService.addParticipant(
+              activeGiveaway.userId,
+              activeGiveaway.streamGiveawayId,
+              {
+                platform: ConnectedPlatform.KICK,
+                externalUserId: userId,
+                username: username,
+                avatarUrl: avatarUrl,
+                method: method,
+                tickets: ticketInfo.totalTickets,
+                metadata: {
+                  messageText: message,
+                  role,
+                  baseTickets: ticketInfo.baseTickets,
+                },
+              },
+            );
+
+            // Marca no Redis para dedupe
+            await this.redisService.markParticipant(
+              activeGiveaway.streamGiveawayId,
+              ConnectedPlatform.KICK,
+              userId,
+              method,
+            );
+
+            // Incrementa métrica de participantes
+            await this.redisService.incrementMetric(
+              activeGiveaway.streamGiveawayId,
+              'total_participants',
+            );
+
+            // Broadcast em tempo real
+            this.realtimeGateway.emitParticipantAdded({
+              streamGiveawayId: activeGiveaway.streamGiveawayId,
+              participant: {
+                id: participantTier.id,
+                username: participantTier.username,
+                platform: participantTier.platform,
+                method: participantTier.method,
+                tickets: participantTier.tickets,
+                avatarUrl: participantTier.avatarUrl || undefined,
+              },
+            });
+
+            entriesAdded.push(`${method} (${ticketInfo.totalTickets} tickets)`);
+          }
         }
       }
 
-      // 🔟 Check for donation configs (Kick Coins and Gift Subs)
+      // ✅ Verifica e adiciona entrada por KICK_COINS (se configurado)
       const kickCoinsConfig = activeGiveaway.donationConfigs.find(
         (config: any) => config.platform === ConnectedPlatform.KICK && config.unitType === 'KICK_COINS',
       );
 
       if (kickCoinsConfig) {
-        // Check if already added for KICK_COINS
-        const isKickCoinsDuplicate = await this.redisService.checkDuplicate(
+        // Verifica se já tem entrada de KICK_COINS
+        const isDuplicateKickCoins = await this.redisService.checkDuplicate(
           activeGiveaway.streamGiveawayId,
           ConnectedPlatform.KICK,
           userId,
           EntryMethod.KICK_COINS,
         );
 
-        if (!isKickCoinsDuplicate) {
-          
+        if (!isDuplicateKickCoins) {
+          // Busca quantidade de kick coins doados pelo usuário no período
           const kickCoins = await this.getKickCoinsForUser(
             activeGiveaway.userId,
             parseInt(userId),
@@ -268,22 +293,18 @@ twIDAQAB
           );
 
           if (kickCoins > 0) {
-
-            // Calculate tickets for KICK_COINS (ONLY donation, no base role tickets)
+            // Calcula tickets baseado nas regras de doação (ONLY donation, no base role tickets)
             const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
               streamGiveawayId: activeGiveaway.streamGiveawayId,
               platform: ConnectedPlatform.KICK,
               adminUserId: activeGiveaway.userId,
               role: 'NON_SUB', // Use NON_SUB to ensure baseTickets = 0
-              totalKickCoins: kickCoins, // Use totalKickCoins param for Kick Coins
+              totalKickCoins: kickCoins,
             });
 
-            // For donation-only entries, use ONLY the kick coins tickets, ignore base tickets
-            const coinsTickets = ticketInfo.kickCoinsTickets;
-
-            if (coinsTickets > 0) {
-              // Create separate entry for KICK_COINS
-              const coinsParticipant = await this.giveawayService.addParticipant(
+            if (ticketInfo.kickCoinsTickets > 0) {
+              // Adiciona participante ao banco de dados (entrada por KICK_COINS)
+              const participantKickCoins = await this.giveawayService.addParticipant(
                 activeGiveaway.userId,
                 activeGiveaway.streamGiveawayId,
                 {
@@ -292,18 +313,15 @@ twIDAQAB
                   username: username,
                   avatarUrl: avatarUrl,
                   method: EntryMethod.KICK_COINS,
-                  tickets: coinsTickets,
+                  tickets: ticketInfo.kickCoinsTickets,
                   metadata: {
-                    role,
-                    kickCoins: kickCoins,
-                    baseTickets: ticketInfo.baseTickets,
-                    kickCoinsTickets: ticketInfo.kickCoinsTickets,
+                    kickCoins,
+                    donationWindow: kickCoinsConfig.donationWindow,
                   },
                 },
               );
 
-              this.logger.log(`✅ [Kick] KICK_COINS entry added: ${coinsTickets} tickets for ${kickCoins} coins`);
-
+              // Marca no Redis para dedupe
               await this.redisService.markParticipant(
                 activeGiveaway.streamGiveawayId,
                 ConnectedPlatform.KICK,
@@ -311,36 +329,47 @@ twIDAQAB
                 EntryMethod.KICK_COINS,
               );
 
+              // Incrementa métrica
+              await this.redisService.incrementMetric(
+                activeGiveaway.streamGiveawayId,
+                'total_participants',
+              );
+
+              // Broadcast
               this.realtimeGateway.emitParticipantAdded({
                 streamGiveawayId: activeGiveaway.streamGiveawayId,
                 participant: {
-                  id: coinsParticipant.id,
-                  username: coinsParticipant.username,
-                  platform: coinsParticipant.platform,
-                  method: coinsParticipant.method,
-                  tickets: coinsParticipant.tickets,
-                  avatarUrl: coinsParticipant.avatarUrl || undefined,
+                  id: participantKickCoins.id,
+                  username: participantKickCoins.username,
+                  platform: participantKickCoins.platform,
+                  method: participantKickCoins.method,
+                  tickets: participantKickCoins.tickets,
+                  avatarUrl: participantKickCoins.avatarUrl || undefined,
                 },
               });
+
+              entriesAdded.push(`KICK_COINS (${ticketInfo.kickCoinsTickets} tickets)`);
             }
           }
         }
       }
 
-      // Check for Gift Subs
+      // ✅ Verifica e adiciona entrada por GIFT_SUB (se configurado)
       const giftSubConfig = activeGiveaway.donationConfigs.find(
         (config: any) => config.platform === ConnectedPlatform.KICK && config.unitType === 'GIFT_SUB',
       );
 
       if (giftSubConfig) {
-        const isGiftSubDuplicate = await this.redisService.checkDuplicate(
+        // Verifica se já tem entrada de GIFT_SUB
+        const isDuplicateGiftSub = await this.redisService.checkDuplicate(
           activeGiveaway.streamGiveawayId,
           ConnectedPlatform.KICK,
           userId,
           EntryMethod.GIFT_SUB,
         );
 
-        if (!isGiftSubDuplicate) {
+        if (!isDuplicateGiftSub) {
+          // Busca quantidade de gift subs doados pelo usuário no período
           const giftSubs = await this.getGiftSubsForUser(
             activeGiveaway.userId,
             parseInt(userId),
@@ -349,8 +378,7 @@ twIDAQAB
           );
 
           if (giftSubs > 0) {
-
-            // Calculate tickets for GIFT_SUB (ONLY donation, no base role tickets)
+            // Calcula tickets baseado nas regras de doação (ONLY donation, no base role tickets)
             const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
               streamGiveawayId: activeGiveaway.streamGiveawayId,
               platform: ConnectedPlatform.KICK,
@@ -359,11 +387,9 @@ twIDAQAB
               totalGiftSubs: giftSubs,
             });
 
-            // For donation-only entries, use ONLY the gift tickets, ignore base tickets
-            const giftTickets = ticketInfo.giftTickets;
-
-            if (giftTickets > 0) {
-              const giftParticipant = await this.giveawayService.addParticipant(
+            if (ticketInfo.giftTickets > 0) {
+              // Adiciona participante ao banco de dados (entrada por GIFT_SUB)
+              const participantGiftSub = await this.giveawayService.addParticipant(
                 activeGiveaway.userId,
                 activeGiveaway.streamGiveawayId,
                 {
@@ -372,18 +398,15 @@ twIDAQAB
                   username: username,
                   avatarUrl: avatarUrl,
                   method: EntryMethod.GIFT_SUB,
-                  tickets: giftTickets,
+                  tickets: ticketInfo.giftTickets,
                   metadata: {
-                    role,
-                    giftSubs: giftSubs,
-                    baseTickets: ticketInfo.baseTickets,
-                    giftTickets: ticketInfo.giftTickets,
+                    giftSubAmount: giftSubs,
+                    donationWindow: giftSubConfig.donationWindow,
                   },
                 },
               );
 
-              this.logger.log(`✅ [Kick] GIFT_SUB entry added: ${giftTickets} tickets for ${giftSubs} subs`);
-
+              // Marca no Redis para dedupe
               await this.redisService.markParticipant(
                 activeGiveaway.streamGiveawayId,
                 ConnectedPlatform.KICK,
@@ -391,23 +414,37 @@ twIDAQAB
                 EntryMethod.GIFT_SUB,
               );
 
+              // Incrementa métrica
+              await this.redisService.incrementMetric(
+                activeGiveaway.streamGiveawayId,
+                'total_participants',
+              );
+
+              // Broadcast
               this.realtimeGateway.emitParticipantAdded({
                 streamGiveawayId: activeGiveaway.streamGiveawayId,
                 participant: {
-                  id: giftParticipant.id,
-                  username: giftParticipant.username,
-                  platform: giftParticipant.platform,
-                  method: giftParticipant.method,
-                  tickets: giftParticipant.tickets,
-                  avatarUrl: giftParticipant.avatarUrl || undefined,
+                  id: participantGiftSub.id,
+                  username: participantGiftSub.username,
+                  platform: participantGiftSub.platform,
+                  method: participantGiftSub.method,
+                  tickets: participantGiftSub.tickets,
+                  avatarUrl: participantGiftSub.avatarUrl || undefined,
                 },
               });
+
+              entriesAdded.push(`GIFT_SUB (${ticketInfo.giftTickets} tickets)`);
             }
           }
         }
       }
+
+      // Log consolidado: userId e entradas adicionadas
+      if (entriesAdded.length > 0) {
+        this.logger.log(`✅ [Kick] userId ${userId} added entries: ${entriesAdded.join(', ')}`);
+      }
     } catch (error) {
-      this.logger.error('❌ [Kick] Error processing chat message:', error);
+      this.logger.error(`❌ [Kick] Error processing chat message for userId ${userId}:`, error);
     }
   }
 

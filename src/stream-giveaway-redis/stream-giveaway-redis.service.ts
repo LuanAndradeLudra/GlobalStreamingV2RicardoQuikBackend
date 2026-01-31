@@ -328,14 +328,22 @@ export class StreamGiveawayRedisService {
   /**
    * Salva dados do vencedor no Redis com TTL de 60 segundos
    * Se já existir um vencedor, ele será sobrescrito
+   * IMPORTANTE: Limpa as mensagens do vencedor anterior antes de definir o novo
    */
   async setWinner(data: WinnerData): Promise<void> {
     const key = this.getWinnerKey(data.streamGiveawayId);
+    const messagesKey = this.getWinnerMessagesKey(data.streamGiveawayId);
     const value = JSON.stringify(data);
     
+    // Limpa mensagens do vencedor anterior antes de definir o novo vencedor
+    // Isso evita que mensagens de vencedores antigos sejam misturadas com o novo
+    await this.redis.del(messagesKey);
+    
+    // Define o novo vencedor
     await this.redis.set(key, value, this.WINNER_TTL);
     
     this.logger.log(`🏆 Winner set for giveaway ${data.streamGiveawayId}: ${data.username} (${data.platform})`);
+    this.logger.log(`🗑️ Previous winner messages cleared for giveaway ${data.streamGiveawayId}`);
   }
 
   /**
