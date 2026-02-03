@@ -90,20 +90,14 @@ export class TwitchService {
       const brazilDay = parseInt(parts.find(p => p.type === 'day')?.value || '0');
       const brazilHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
       
-      // Se for >= 03:00 no Brasil, usar o dia de hoje às 03:00
-      // Se for < 03:00 no Brasil, usar o dia de ontem às 03:00
-      let targetYear = brazilYear;
-      let targetMonth = brazilMonth;
-      let targetDay = brazilDay;
-      
-      if (brazilHour < 3) {
-        // Ainda estamos no período que começou às 03:00 de ontem
-        const yesterday = new Date(Date.UTC(brazilYear, brazilMonth, brazilDay));
-        yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-        targetYear = yesterday.getUTCFullYear();
-        targetMonth = yesterday.getUTCMonth();
-        targetDay = yesterday.getUTCDate();
-      }
+      // A API da Twitch retorna os dados do dia ANTERIOR ao started_at
+      // Então precisamos passar o dia seguinte para pegar os dados do dia atual
+      // Sempre adiciona +1 dia porque a API retorna o dia anterior
+      const tomorrow = new Date(Date.UTC(brazilYear, brazilMonth, brazilDay));
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      const targetYear = tomorrow.getUTCFullYear();
+      const targetMonth = tomorrow.getUTCMonth();
+      const targetDay = tomorrow.getUTCDate();
       
       // Cria data UTC: 03:00 no Brasil = 06:00 UTC (UTC-3)
       const utcTarget = new Date(Date.UTC(targetYear, targetMonth, targetDay, 6, 0, 0, 0));

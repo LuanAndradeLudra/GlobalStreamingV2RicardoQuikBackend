@@ -525,26 +525,26 @@ export class TwitchWebhooksService {
         const brazilDay = parseInt(parts.find(p => p.type === 'day')?.value || '0');
         const brazilHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
         
-        // Se for >= 03:00 no Brasil, usar o dia de hoje às 03:00
-        // Se for < 03:00 no Brasil, usar o dia de ontem às 03:00
+        // A API da Twitch retorna os dados do dia ANTERIOR ao started_at
+        // Então precisamos passar o dia seguinte para pegar os dados do dia atual
+        // Se for >= 03:00 no Brasil, queremos os dados de hoje, então passamos amanhã
+        // Se for < 03:00 no Brasil, queremos os dados de ontem, então passamos hoje
         let targetYear = brazilYear;
         let targetMonth = brazilMonth;
         let targetDay = brazilDay;
         
-        if (brazilHour < 3) {
-          // Ainda estamos no período que começou às 03:00 de ontem
-          const yesterday = new Date(Date.UTC(brazilYear, brazilMonth, brazilDay));
-          yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-          targetYear = yesterday.getUTCFullYear();
-          targetMonth = yesterday.getUTCMonth();
-          targetDay = yesterday.getUTCDate();
-        }
+        // Sempre adiciona +1 dia porque a API retorna o dia anterior
+        const tomorrow = new Date(Date.UTC(brazilYear, brazilMonth, brazilDay));
+        tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+        targetYear = tomorrow.getUTCFullYear();
+        targetMonth = tomorrow.getUTCMonth();
+        targetDay = tomorrow.getUTCDate();
         
         // Cria data UTC: 03:00 no Brasil = 06:00 UTC (UTC-3)
         const utcTarget = new Date(Date.UTC(targetYear, targetMonth, targetDay, 6, 0, 0, 0));
         startedAt = utcTarget.toISOString();
         
-        this.logger.log(`📅 [Twitch Bits] DAILY window - Brazil hour: ${brazilHour}, calculated started_at: ${startedAt}`);
+        this.logger.log(`📅 [Twitch Bits] DAILY window - Brazil hour: ${brazilHour}, calculated started_at: ${startedAt} (API returns previous day)`);
       } else if (donationWindow === 'WEEKLY') {
         // For WEEKLY: get the current Monday + 7 days (next Monday)
         const now = new Date();
