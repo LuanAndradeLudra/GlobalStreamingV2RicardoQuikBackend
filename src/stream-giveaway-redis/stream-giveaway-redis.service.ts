@@ -57,6 +57,7 @@ export class StreamGiveawayRedisService {
   private readonly METRICS_PREFIX = 'giveaway:metrics';
   private readonly WINNER_PREFIX = 'giveaway:winner';
   private readonly WINNER_MESSAGES_PREFIX = 'giveaway:winner:messages';
+  private readonly GIFT_SUBS_LEADERBOARD_PREFIX = 'giveaway:gift-subs-leaderboard';
   private readonly WINNER_TTL = 60; // 60 segundos
 
   constructor(private readonly redis: RedisService) {}
@@ -405,6 +406,55 @@ export class StreamGiveawayRedisService {
     await this.redis.del(messagesKey);
     
     this.logger.log(`🗑️ Winner data removed for giveaway ${streamGiveawayId}`);
+  }
+
+  /**
+   * Gera chave para gift subs leaderboard
+   */
+  private getGiftSubsLeaderboardKey(userId: string, window: 'WEEKLY' | 'MONTHLY'): string {
+    return `${this.GIFT_SUBS_LEADERBOARD_PREFIX}:${userId}:${window}`;
+  }
+
+  /**
+   * Salva gift subs leaderboard no Redis (WEEKLY e MONTHLY)
+   * Formato esperado: array de { user_id, username, quantity }
+   */
+  async setGiftSubsLeaderboard(
+    userId: string,
+    weekly: Array<{ user_id: number; username: string; quantity: number }>,
+    monthly: Array<{ user_id: number; username: string; quantity: number }>,
+  ): Promise<void> {
+    const weeklyKey = this.getGiftSubsLeaderboardKey(userId, 'WEEKLY');
+    const monthlyKey = this.getGiftSubsLeaderboardKey(userId, 'MONTHLY');
+
+    await this.redis.set(weeklyKey, JSON.stringify(weekly));
+    await this.redis.set(monthlyKey, JSON.stringify(monthly));
+
+    this.logger.log(`✅ Gift subs leaderboard saved for user ${userId} (weekly: ${weekly.length}, monthly: ${monthly.length})`);
+  }
+
+  /**
+   * Busca gift subs leaderboard do Redis
+   * Retorna array vazio se não encontrado
+   */
+  async getGiftSubsLeaderboard(
+    userId: string,
+    window: 'WEEKLY' | 'MONTHLY',
+  ): Promise<Array<{ user_id: number; username: string; quantity: number }>> {
+    const key = this.getGiftSubsLeaderboardKey(userId, window);
+    const data = await this.redis.get(key);
+
+    if (!data) {
+      this.logger.warn(`⚠️ No gift subs leaderboard found for user ${userId} (${window})`);
+      return [];
+    }
+
+    try {
+      return JSON.parse(data);
+    } catch (error) {
+      this.logger.error(`❌ Error parsing gift subs leaderboard for user ${userId} (${window}):`, error);
+      return [];
+    }
   }
 }
 

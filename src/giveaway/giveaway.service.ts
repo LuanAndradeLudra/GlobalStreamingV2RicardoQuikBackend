@@ -1565,5 +1565,16 @@ export class GiveawayService {
     };
   }
 
+  /**
+   * Set Kick Gift Subs leaderboard in Redis
+   * Receives weekly and monthly data from frontend and stores it in Redis
+   */
+  async setGiftSubsLeaderboard(
+    userId: string,
+    dto: { gifts_week: Array<{ user_id: number; username: string; quantity: number }>; gifts_month: Array<{ user_id: number; username: string; quantity: number }> },
+  ): Promise<void> {
+    await this.redisService.setGiftSubsLeaderboard(userId, dto.gifts_week, dto.gifts_month);
+  }
+
   private readonly logger = new Logger(GiveawayService.name);
 }

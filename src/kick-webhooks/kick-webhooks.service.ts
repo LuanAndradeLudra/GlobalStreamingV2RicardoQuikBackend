@@ -6,6 +6,7 @@ import { RealtimeGateway } from '../realtime-gateway/realtime-gateway.gateway';
 import { KickService } from '../kick/kick.service';
 import { GiveawayService } from '../giveaway/giveaway.service';
 import { ConnectedPlatform, EntryMethod, DonationWindow } from '@prisma/client';
+import { DateRangeHelper } from '../utils/date-range.helper';
 
 @Injectable()
 export class KickWebhooksService {
@@ -807,6 +808,8 @@ twIDAQAB
 
   /**
    * Get Gift Subs from user in the specified window
+   * - DAILY: Fetches from Event table (similar to getKickGiftSubsDaily)
+   * - WEEKLY/MONTHLY: Fetches from Redis (set by frontend when creating giveaway)
    */
   private async getGiftSubsForUser(
     adminUserId: string,
@@ -815,91 +818,70 @@ twIDAQAB
     window: DonationWindow,
   ): Promise<number> {
     try {
-      // Get connected account to get channel name
-      const connectedAccount = await this.prisma.connectedAccount.findFirst({
-        where: {
-          userId: adminUserId,
-          platform: ConnectedPlatform.KICK,
-        },
-      });
+      // DAILY: Fetch from Event table
+      if (window === 'DAILY') {
+        const { start, end } = DateRangeHelper.getDailyRange();
 
-      if (!connectedAccount || !connectedAccount.displayName) {
-        this.logger.warn('⚠️ [Kick] No connected Kick account found');
-        return 0;
+        // Get GIFT_SUBSCRIPTION events for today
+        const events = await this.prisma.event.findMany({
+          where: {
+            userId: adminUserId,
+            platform: ConnectedPlatform.KICK,
+            eventType: 'GIFT_SUBSCRIPTION',
+            eventDate: {
+              gte: start,
+              lt: end,
+            },
+          },
+          select: {
+            externalUserId: true,
+            username: true,
+            amount: true,
+          },
+        });
+
+        // Find events for this specific user (by user_id or username)
+        const userEvents = events.filter(
+          (event) =>
+            event.externalUserId === kickUserId.toString() ||
+            event.username?.toLowerCase() === username.toLowerCase(),
+        );
+
+        // Sum up the gift amounts
+        const totalGifts = userEvents.reduce((sum, event) => sum + (event.amount || 1), 0);
+
+        this.logger.log(`📊 [DAILY] Found ${totalGifts} gifted subs from user ${username} (from Event table)`);
+        return totalGifts;
       }
 
-      const channelName = connectedAccount.displayName; // Use displayName (slug) for API calls
-      
-      // Fetch gift subs leaderboard - using the same method as the controller
-      const leaderboard = await this.kickService.getGiftSubsLeaderboard(
+      // WEEKLY or MONTHLY: Fetch from Redis
+      const leaderboard = await this.redisService.getGiftSubsLeaderboard(
         adminUserId,
-        channelName,
-        {
-          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'accept-language': 'en-US,en;q=0.9',
-        },
+        window === 'WEEKLY' ? 'WEEKLY' : 'MONTHLY',
       );
 
-      // Check if response has time windows (data.month/week) or direct gifts array
-      let giftsArray: any[];
-      
-      if (leaderboard?.data) {
-        // New format with time windows: {data: {lifetime, month, week}}
-        
-        switch (window) {
-          case 'MONTHLY':
-            giftsArray = leaderboard.data.month || [];
-            break;
-          case 'WEEKLY':
-            giftsArray = leaderboard.data.week || [];
-            break;
-          case 'DAILY':
-            // Kick doesn't have daily, use week as fallback
-            giftsArray = leaderboard.data.week || [];
-            break;
-          default:
-            giftsArray = leaderboard.data.month || [];
-        }
-      } else if (leaderboard?.gifts_month || leaderboard?.gifts_week) {
-        // Format with gifts_month and gifts_week at root level: {gifts_month: [...], gifts_week: [...], gifts: [...]}
-        
-        switch (window) {
-          case 'MONTHLY':
-            giftsArray = leaderboard.gifts_month || [];
-            break;
-          case 'WEEKLY':
-            giftsArray = leaderboard.gifts_week || [];
-            break;
-          case 'DAILY':
-            // Kick doesn't have daily, use week as fallback
-            giftsArray = leaderboard.gifts_week || [];
-            break;
-          default:
-            giftsArray = leaderboard.gifts_month || [];
-        }
-      } else if (leaderboard?.gifts) {
-        // Old format: {gifts: [...]} - This is LIFETIME, should only be used as fallback
-        giftsArray = leaderboard.gifts;
-      } else {
-        this.logger.warn('⚠️ [Kick] Invalid gift subs leaderboard response - unknown format');
+      if (!leaderboard || leaderboard.length === 0) {
+        this.logger.warn(`⚠️ [Kick] No gift subs leaderboard found in Redis for ${window} window`);
         return 0;
       }
 
-      // Find user in leaderboard (by username as Kick uses usernames in leaderboard)
-      const userEntry = giftsArray.find(
-        (entry: any) => entry.username?.toLowerCase() === username.toLowerCase(),
+      // Find user in leaderboard (by user_id or username)
+      const userEntry = leaderboard.find(
+        (entry) =>
+          entry.user_id === kickUserId ||
+          entry.username?.toLowerCase() === username.toLowerCase(),
       );
 
       if (!userEntry) {
         return 0;
       }
 
-      const giftCount = userEntry.gifted_amount || userEntry.quantity || 0;
+      const giftCount = userEntry.quantity || 0;
 
-      this.logger.log(`📊 Found ${giftCount} gifted subs from user ${username} (window: ${window})`);
+      this.logger.log(`📊 [${window}] Found ${giftCount} gifted subs from user ${username} (from Redis)`);
       return giftCount;
     } catch (error) {
-      this.logger.error(`❌ Error fetching gift subs for user ${username}:`, error);
+      this.logger.error(`❌ Error fetching gift subs for user ${username} (${window}):`, error);
       this.logger.error(`❌ [DEBUG] Error stack:`, error instanceof Error ? error.stack : String(error));
       return 0;
     }

@@ -17,6 +17,7 @@ import { UpdateGiveawayDto } from './dto/update-giveaway.dto';
 import { CreateParticipantDto } from './dto/create-participant.dto';
 import { CreateParticipantsBatchDto } from './dto/create-participants-batch.dto';
 import { DrawResponseDto } from './dto/draw-response.dto';
+import { SetGiftSubsLeaderboardDto } from './dto/set-gift-subs-leaderboard.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -715,6 +716,41 @@ export class GiveawayController {
     messages: any[];
   }> {
     return this.giveawayService.getWinnerMessages(id);
+  }
+
+  @Post('gift-subs-leaderboard')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Set Kick Gift Subs leaderboard in Redis',
+    description:
+      'Receives weekly and monthly gift subs leaderboard data from Kick API and stores it in Redis. ' +
+      'This data is used for WEEKLY and MONTHLY giveaways. For DAILY giveaways, data is fetched from the Event table.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Gift subs leaderboard saved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthenticated - invalid or missing token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user is not an admin',
+  })
+  async setGiftSubsLeaderboard(
+    @CurrentUser() user: User,
+    @Body() dto: SetGiftSubsLeaderboardDto,
+  ): Promise<{ message: string }> {
+    await this.giveawayService.setGiftSubsLeaderboard(user.id, dto);
+    return { message: 'Gift subs leaderboard saved successfully' };
   }
 }
 
