@@ -501,14 +501,48 @@ export class TwitchWebhooksService {
       let startedAt: string | undefined;
       
       if (donationWindow === 'DAILY') {
-        const now = new Date();
-        // Converte para horário do Brasil (America/Sao_Paulo = UTC-3)
-        const brazilTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-        brazilTime.setDate(brazilTime.getDate() + 1); // +1 day
-        brazilTime.setHours(0, 0, 0, 0);
-        startedAt = brazilTime.toISOString();
+        // Período diário: 03:00 até 03:00 do dia seguinte (horário brasileiro, UTC-3)
+        // 03:00 no Brasil = 06:00 UTC
         
-        this.logger.log(`📅 [Twitch Bits] DAILY window - calculated started_at: ${startedAt}`);
+        const now = new Date();
+        // Obtém componentes da data/hora atual no Brasil
+        const brazilFormatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/Sao_Paulo',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        });
+        
+        const parts = brazilFormatter.formatToParts(now);
+        const brazilYear = parseInt(parts.find(p => p.type === 'year')?.value || '0');
+        const brazilMonth = parseInt(parts.find(p => p.type === 'month')?.value || '0') - 1; // Month is 0-indexed
+        const brazilDay = parseInt(parts.find(p => p.type === 'day')?.value || '0');
+        const brazilHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+        
+        // Se for >= 03:00 no Brasil, usar o dia de hoje às 03:00
+        // Se for < 03:00 no Brasil, usar o dia de ontem às 03:00
+        let targetYear = brazilYear;
+        let targetMonth = brazilMonth;
+        let targetDay = brazilDay;
+        
+        if (brazilHour < 3) {
+          // Ainda estamos no período que começou às 03:00 de ontem
+          const yesterday = new Date(Date.UTC(brazilYear, brazilMonth, brazilDay));
+          yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+          targetYear = yesterday.getUTCFullYear();
+          targetMonth = yesterday.getUTCMonth();
+          targetDay = yesterday.getUTCDate();
+        }
+        
+        // Cria data UTC: 03:00 no Brasil = 06:00 UTC (UTC-3)
+        const utcTarget = new Date(Date.UTC(targetYear, targetMonth, targetDay, 6, 0, 0, 0));
+        startedAt = utcTarget.toISOString();
+        
+        this.logger.log(`📅 [Twitch Bits] DAILY window - Brazil hour: ${brazilHour}, calculated started_at: ${startedAt}`);
       } else if (donationWindow === 'WEEKLY') {
         // For WEEKLY: get the current Monday + 7 days (next Monday)
         const now = new Date();

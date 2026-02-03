@@ -69,35 +69,49 @@ export class TwitchService {
     const now = new Date();
 
     if (period === 'day') {
-      // Brasil timezone: UTC-3
-      // When it's 21:00 (9 PM) in Brazil, it's 00:00 UTC (next day)
-      // To get bits for the "current day" in Brazil, we need to check if we're past 21:00 Brazil time
+      // Período diário: 03:00 até 03:00 do dia seguinte (horário brasileiro, UTC-3)
+      // 03:00 no Brasil = 06:00 UTC
       
-      // Get current time in Brazil (UTC-3)
-      const brazilOffset = -3 * 60; // -3 hours in minutes
-      const utcTime = now.getTime();
-      const brazilTime = new Date(utcTime + (brazilOffset * 60 * 1000));
+      // Obtém componentes da data/hora atual no Brasil
+      const brazilFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
       
-      // Get Brazil hour (0-23)
-      const brazilHour = brazilTime.getUTCHours();
+      const parts = brazilFormatter.formatToParts(now);
+      const brazilYear = parseInt(parts.find(p => p.type === 'year')?.value || '0');
+      const brazilMonth = parseInt(parts.find(p => p.type === 'month')?.value || '0') - 1; // Month is 0-indexed
+      const brazilDay = parseInt(parts.find(p => p.type === 'day')?.value || '0');
+      const brazilHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
       
-      // If it's 21:00 or later in Brazil (00:00+ UTC next day), we need tomorrow's data
-      // Otherwise, we need today's data
-      const targetDate = new Date(now);
+      // Se for >= 03:00 no Brasil, usar o dia de hoje às 03:00
+      // Se for < 03:00 no Brasil, usar o dia de ontem às 03:00
+      let targetYear = brazilYear;
+      let targetMonth = brazilMonth;
+      let targetDay = brazilDay;
       
-      if (brazilHour >= 21) {
-        // It's past 9 PM in Brazil, so we're already in "tomorrow" in UTC
-        // Fetch tomorrow's data (next day in UTC)
-        targetDate.setUTCDate(targetDate.getUTCDate() + 1);
+      if (brazilHour < 3) {
+        // Ainda estamos no período que começou às 03:00 de ontem
+        const yesterday = new Date(Date.UTC(brazilYear, brazilMonth, brazilDay));
+        yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+        targetYear = yesterday.getUTCFullYear();
+        targetMonth = yesterday.getUTCMonth();
+        targetDay = yesterday.getUTCDate();
       }
       
-      // Set to start of the UTC day (00:00:00)
-      targetDate.setUTCHours(0, 0, 0, 0);
+      // Cria data UTC: 03:00 no Brasil = 06:00 UTC (UTC-3)
+      const utcTarget = new Date(Date.UTC(targetYear, targetMonth, targetDay, 6, 0, 0, 0));
       
-      console.log(`📅 [Twitch Bits] Brazil time: ${brazilTime.toISOString()}, Brazil hour: ${brazilHour}`);
-      console.log(`📅 [Twitch Bits] Fetching bits for UTC date: ${targetDate.toISOString()}`);
+      console.log(`📅 [Twitch Bits] Brazil hour: ${brazilHour}`);
+      console.log(`📅 [Twitch Bits] Fetching bits for period starting at: ${utcTarget.toISOString()} (03:00 Brazil time)`);
       
-      return targetDate.toISOString();
+      return utcTarget.toISOString();
     }
 
     if (period === 'week') {
