@@ -347,6 +347,8 @@ export class TwitchWebhooksService {
             bitsConfig.donationWindow,
           );
 
+          this.logger.log(`💎 [Twitch Bits] Bits amount: ${bitsAmount}`);
+
           // Se o usuário doou bits, ele recebe 2 tickets fixos (independente do valor doado)
           if (bitsAmount >= 50) {
             // Adiciona participante ao banco de dados (entrada por BITS)
