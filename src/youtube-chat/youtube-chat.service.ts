@@ -451,6 +451,7 @@ export class YouTubeChatService {
         platform: ConnectedPlatform.YOUTUBE,
         adminUserId: activeGiveaway.userId,
         role: role,
+        isStreamGiveaway: true, // This is a stream giveaway, use *_STREAM rules if available
       });
 
       if (ticketInfo.totalTickets === 0) {

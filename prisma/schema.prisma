@@ -169,11 +169,13 @@ model TicketGlobalRule {
 // Examples:
 //   - Bits: unitType="BITS", unitSize=100, ticketsPerUnitSize=1 → 100 bits = 1 ticket
 //   - Gift subs: unitType="GIFT_SUB", unitSize=1, ticketsPerUnitSize=4 → 1 gift = 4 tickets
+//   - Stream-specific: unitType="BITS_STREAM", "GIFT_SUB_STREAM", "KICK_COINS_STREAM" → used only for stream giveaways
+//     If *_STREAM rule exists, it takes precedence over normal types (BITS, GIFT_SUB, KICK_COINS) for stream giveaways
 model TicketGlobalDonationRule {
   id                 String            @id @default(uuid())
   userId             String
   platform           ConnectedPlatform // TWITCH, KICK, YOUTUBE…
-  unitType           String // "BITS", "GIFT_SUB", "KICK_COINS", etc.
+  unitType           String // "BITS", "GIFT_SUB", "KICK_COINS", "BITS_STREAM", "GIFT_SUB_STREAM", "KICK_COINS_STREAM", etc.
   unitSize           Int // size of the "block" of units (e.g., 100 bits, 1 gift)
   ticketsPerUnitSize Int // tickets per block (e.g., 1 ticket per 100 bits, 4 tickets per gift)
   createdAt          DateTime          @default(now())
@@ -225,7 +227,7 @@ model StreamGiveawayDonationRuleOverride {
   id                 String            @id @default(uuid())
   streamGiveawayId   String
   platform           ConnectedPlatform
-  unitType           String // "BITS" | "GIFT_SUB" | "KICK_COINS" | "SUPERCHAT"
+  unitType           String // "BITS" | "GIFT_SUB" | "KICK_COINS" | "SUPERCHAT" | "BITS_STREAM" | "GIFT_SUB_STREAM" | "KICK_COINS_STREAM"
   unitSize           Int
   ticketsPerUnitSize Int
   createdAt          DateTime          @default(now())

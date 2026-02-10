@@ -12,6 +12,7 @@ import { CreateGiveawayDonationConfigDto } from './dto/create-giveaway-donation-
 import { CreateParticipantDto } from './dto/create-participant.dto';
 import { CreateParticipantsBatchDto } from './dto/create-participants-batch.dto';
 import { DrawResponseDto } from './dto/draw-response.dto';
+import { SetGiftSubsLeaderboardDto } from './dto/set-gift-subs-leaderboard.dto';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -796,6 +797,9 @@ export class GiveawayService {
    * 2. TicketGlobalRule (default rules for the admin user)
    * 3. TicketGlobalDonationRule / StreamGiveawayDonationRuleOverride for donation-based tickets
    * 
+   * For stream giveaways (isStreamGiveaway=true), it will first try to find rules with *_STREAM unitType
+   * (e.g., BITS_STREAM, GIFT_SUB_STREAM, KICK_COINS_STREAM), then fallback to normal types (BITS, GIFT_SUB, KICK_COINS).
+   * 
    * Note: The donation window is ignored for now.
    * This will be used when integrating with the actual source of bits/gifts data.
    */
@@ -807,6 +811,7 @@ export class GiveawayService {
     totalBits?: number; // total de bits válidos para esse stream giveaway
     totalGiftSubs?: number; // total de gift subs válidos para esse stream giveaway
     totalKickCoins?: number; // total de Kick Coins válidos para esse stream giveaway
+    isStreamGiveaway?: boolean; // if true, will search for *_STREAM unitTypes first, then fallback to normal types
   }): Promise<{
     baseTickets: number;
     bitsTickets: number;
@@ -828,6 +833,54 @@ export class GiveawayService {
     if (!streamGiveaway) {
       throw new NotFoundException(`Stream giveaway with ID ${input.streamGiveawayId} not found`);
     }
+
+    // Helper function to get donation rule unitType (with fallback for stream giveaways)
+    const getDonationRuleUnitType = (baseType: 'BITS' | 'GIFT_SUB' | 'KICK_COINS'): string[] => {
+      if (input.isStreamGiveaway) {
+        // For stream giveaways, try *_STREAM first, then fallback to normal type
+        return [`${baseType}_STREAM`, baseType];
+      }
+      return [baseType];
+    };
+
+    // Helper function to find donation rule (override or global) with fallback
+    const findDonationRule = async (
+      unitTypes: string[],
+    ): Promise<{ unitSize: number; ticketsPerUnitSize: number; unitType: string } | null> => {
+      // First, try stream giveaway-specific override
+      for (const unitType of unitTypes) {
+        const override = await this.prisma.streamGiveawayDonationRuleOverride.findUnique({
+          where: {
+            streamGiveawayId_platform_unitType: {
+              streamGiveawayId: input.streamGiveawayId,
+              platform: input.platform,
+              unitType,
+            },
+          },
+        });
+        if (override) {
+          return { unitSize: override.unitSize, ticketsPerUnitSize: override.ticketsPerUnitSize, unitType };
+        }
+      }
+
+      // Then, try global rules
+      for (const unitType of unitTypes) {
+        const globalRule = await this.prisma.ticketGlobalDonationRule.findUnique({
+          where: {
+            userId_platform_unitType: {
+              userId: input.adminUserId,
+              platform: input.platform,
+              unitType,
+            },
+          },
+        });
+        if (globalRule) {
+          return { unitSize: globalRule.unitSize, ticketsPerUnitSize: globalRule.ticketsPerUnitSize, unitType };
+        }
+      }
+
+      return null;
+    };
 
     // 1. Calculate base tickets from role (check override first, then global rule)
     let baseTickets = 0;
@@ -873,33 +926,14 @@ export class GiveawayService {
       (config) => config.platform === input.platform && config.unitType === 'BITS',
     );
     if (bitsConfig && input.totalBits && input.totalBits > 0) {
-      // Check for stream giveaway-specific override first
-      const donationOverride = await this.prisma.streamGiveawayDonationRuleOverride.findUnique({
-        where: {
-          streamGiveawayId_platform_unitType: {
-            streamGiveawayId: input.streamGiveawayId,
-            platform: input.platform,
-            unitType: 'BITS',
-          },
-        },
-      });
-
-      if (donationOverride) {
-        bitsTickets = donationOverride.ticketsPerUnitSize
-      } else {
-        // Use global rule
-        const bitsRule = await this.prisma.ticketGlobalDonationRule.findUnique({
-          where: {
-            userId_platform_unitType: {
-              userId: input.adminUserId,
-              platform: input.platform,
-              unitType: 'BITS',
-            },
-          },
-        });
-
-        if (bitsRule) {
-          bitsTickets = Math.floor((input.totalBits / bitsRule.unitSize) * bitsRule.ticketsPerUnitSize);
+      const unitTypes = getDonationRuleUnitType('BITS');
+      const rule = await findDonationRule(unitTypes);
+      if (rule) {
+        // If it's a *_STREAM type, return fixed tickets without formula
+        if (rule.unitType.endsWith('_STREAM')) {
+          bitsTickets = rule.ticketsPerUnitSize;
+        } else {
+          bitsTickets = Math.floor((input.totalBits / rule.unitSize) * rule.ticketsPerUnitSize);
         }
       }
     }
@@ -910,33 +944,14 @@ export class GiveawayService {
       (config) => config.platform === input.platform && config.unitType === 'GIFT_SUB',
     );
     if (giftSubConfig && input.totalGiftSubs && input.totalGiftSubs > 0) {
-      // Check for stream giveaway-specific override first
-      const donationOverride = await this.prisma.streamGiveawayDonationRuleOverride.findUnique({
-        where: {
-          streamGiveawayId_platform_unitType: {
-            streamGiveawayId: input.streamGiveawayId,
-            platform: input.platform,
-            unitType: 'GIFT_SUB',
-          },
-        },
-      });
-
-      if (donationOverride) {
-        giftTickets = donationOverride.ticketsPerUnitSize;
-      } else {
-        // Use global rule
-        const giftRule = await this.prisma.ticketGlobalDonationRule.findUnique({
-          where: {
-            userId_platform_unitType: {
-              userId: input.adminUserId,
-              platform: input.platform,
-              unitType: 'GIFT_SUB',
-            },
-          },
-        });
-
-        if (giftRule) {
-          giftTickets = Math.floor((input.totalGiftSubs / giftRule.unitSize) * giftRule.ticketsPerUnitSize);
+      const unitTypes = getDonationRuleUnitType('GIFT_SUB');
+      const rule = await findDonationRule(unitTypes);
+      if (rule) {
+        // If it's a *_STREAM type, return fixed tickets without formula
+        if (rule.unitType.endsWith('_STREAM')) {
+          giftTickets = rule.ticketsPerUnitSize;
+        } else {
+          giftTickets = Math.floor((input.totalGiftSubs / rule.unitSize) * rule.ticketsPerUnitSize);
         }
       }
     }
@@ -947,33 +962,14 @@ export class GiveawayService {
       (config) => config.platform === input.platform && config.unitType === 'KICK_COINS',
     );
     if (kickCoinsConfig && input.totalKickCoins && input.totalKickCoins > 0) {
-      // Check for stream giveaway-specific override first
-      const donationOverride = await this.prisma.streamGiveawayDonationRuleOverride.findUnique({
-        where: {
-          streamGiveawayId_platform_unitType: {
-            streamGiveawayId: input.streamGiveawayId,
-            platform: input.platform,
-            unitType: 'KICK_COINS',
-          },
-        },
-      });
-
-      if (donationOverride) {
-        kickCoinsTickets = donationOverride.ticketsPerUnitSize
-      } else {
-        // Use global rule
-        const kickCoinsRule = await this.prisma.ticketGlobalDonationRule.findUnique({
-          where: {
-            userId_platform_unitType: {
-              userId: input.adminUserId,
-              platform: input.platform,
-              unitType: 'KICK_COINS',
-            },
-          },
-        });
-
-        if (kickCoinsRule) {
-          kickCoinsTickets = Math.floor((input.totalKickCoins / kickCoinsRule.unitSize) * kickCoinsRule.ticketsPerUnitSize);
+      const unitTypes = getDonationRuleUnitType('KICK_COINS');
+      const rule = await findDonationRule(unitTypes);
+      if (rule) {
+        // If it's a *_STREAM type, return fixed tickets without formula
+        if (rule.unitType.endsWith('_STREAM')) {
+          kickCoinsTickets = rule.ticketsPerUnitSize;
+        } else {
+          kickCoinsTickets = Math.floor((input.totalKickCoins / rule.unitSize) * rule.ticketsPerUnitSize);
         }
       }
     }
@@ -1229,15 +1225,6 @@ export class GiveawayService {
 
     const isFirstDraw = previousWinners.length === 0 && streamGiveaway.status === StreamGiveawayStatus.OPEN;
 
-    // Get winner participant data
-    const winnerParticipant = await this.prisma.streamGiveawayParticipant.findUnique({
-      where: { id: winner.id },
-    });
-
-    if (!winnerParticipant) {
-      throw new BadRequestException(`Winner participant with ID ${winner.id} not found`);
-    }
-
     // Save new winner to database
     await (this.prisma as any).streamGiveawayWinner.create({
       data: {
@@ -1255,18 +1242,6 @@ export class GiveawayService {
         verified,
       },
     });
-
-    // Save winner data to Redis for message tracking (TTL: 60 seconds)
-    await this.redisService.setWinner({
-      streamGiveawayId,
-      username: winnerParticipant.username,
-      platform: winnerParticipant.platform,
-      externalUserId: winnerParticipant.externalUserId,
-      drawnAt: new Date().toISOString(),
-    });
-
-    this.logger.log(`🏆 Winner saved to Redis: ${winnerParticipant.username} (${winnerParticipant.platform})`);
-
 
     // If this is the first draw, change status from OPEN to DONE
     if (isFirstDraw) {
@@ -1533,41 +1508,35 @@ export class GiveawayService {
   }
 
   /**
-   * Get winner messages from Redis
-   * Returns winner data and their messages (if any)
+   * Get winner messages for a stream giveaway
+   * Returns winner data and all messages from the winner
    */
   async getWinnerMessages(streamGiveawayId: string): Promise<{
     winner: any;
     messages: any[];
   }> {
-    // Ensure the stream giveaway exists
-    const streamGiveaway = await this.prisma.streamGiveaway.findFirst({
-      where: { id: streamGiveawayId },
-    });
-
-    if (!streamGiveaway) {
-      throw new NotFoundException(`Stream giveaway with ID ${streamGiveawayId} not found`);
-    }
-
-    // Get winner data and messages from Redis
     const winner = await this.redisService.getWinner(streamGiveawayId);
     const messages = await this.redisService.getWinnerMessages(streamGiveawayId);
-
+    
     return {
-      winner: winner || null,
-      messages: messages || [],
+      winner,
+      messages,
     };
   }
 
   /**
-   * Set Kick Gift Subs leaderboard in Redis
-   * Receives weekly and monthly data from frontend and stores it in Redis
+   * Set gift subs leaderboard in Redis for WEEKLY and MONTHLY windows
+   * This data is used when calculating tickets for gift subs in stream giveaways
    */
   async setGiftSubsLeaderboard(
     userId: string,
-    dto: { gifts_week: Array<{ user_id: number; username: string; quantity: number }>; gifts_month: Array<{ user_id: number; username: string; quantity: number }> },
+    dto: SetGiftSubsLeaderboardDto,
   ): Promise<void> {
-    await this.redisService.setGiftSubsLeaderboard(userId, dto.gifts_week, dto.gifts_month);
+    await this.redisService.setGiftSubsLeaderboard(
+      userId,
+      dto.gifts_week,
+      dto.gifts_month,
+    );
   }
 
   private readonly logger = new Logger(GiveawayService.name);

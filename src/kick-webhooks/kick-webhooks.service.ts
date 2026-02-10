@@ -216,7 +216,7 @@ twIDAQAB
             streamGiveawayId: activeGiveaway.streamGiveawayId,
             platform: ConnectedPlatform.KICK,
             adminUserId: activeGiveaway.userId,
-            role: role,
+            role: role
           });
 
           if (ticketInfo.totalTickets > 0) {
@@ -302,6 +302,7 @@ twIDAQAB
               adminUserId: activeGiveaway.userId,
               role: 'NON_SUB', // Use NON_SUB to ensure baseTickets = 0
               totalKickCoins: kickCoins, // Use totalKickCoins param for Kick Coins
+              isStreamGiveaway: true, // This is a stream giveaway, use *_STREAM rules if available
             });
 
             // For donation-only entries, use ONLY the kick coins tickets, ignore base tickets
@@ -389,6 +390,7 @@ twIDAQAB
               adminUserId: activeGiveaway.userId,
               role: 'NON_SUB', // Use NON_SUB to ensure baseTickets = 0
               totalGiftSubs: giftSubs,
+              isStreamGiveaway: true, // This is a stream giveaway, use *_STREAM rules if available
             });
 
             // For donation-only entries, use ONLY the gift tickets, ignore base tickets
