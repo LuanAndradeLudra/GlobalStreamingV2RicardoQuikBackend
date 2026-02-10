@@ -6,18 +6,51 @@
 export class DateRangeHelper {
   /**
    * Get start and end dates for DAILY period
-   * Returns: Start of current day (00:00) to start of next day (00:00) in Brazil timezone
+   * Returns: Start of current day (03:00) to start of next day (03:00) in Brazil timezone
+   * 03:00 no Brasil = 06:00 UTC (UTC-3)
    */
   static getDailyRange(): { start: Date; end: Date } {
     const now = new Date();
     
-    // Start of current day in Brazil (00:00:00)
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
+    // Obtém componentes da data/hora atual no Brasil
+    const brazilFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
     
-    // Start of next day in Brazil (00:00:00)
+    const parts = brazilFormatter.formatToParts(now);
+    const brazilYear = parseInt(parts.find(p => p.type === 'year')?.value || '0');
+    const brazilMonth = parseInt(parts.find(p => p.type === 'month')?.value || '0') - 1; // Month is 0-indexed
+    const brazilDay = parseInt(parts.find(p => p.type === 'day')?.value || '0');
+    const brazilHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+    
+    // Se for >= 03:00 no Brasil, o dia atual começa às 03:00 de hoje
+    // Se for < 03:00 no Brasil, o dia atual começa às 03:00 de ontem
+    let startYear = brazilYear;
+    let startMonth = brazilMonth;
+    let startDay = brazilDay;
+    
+    if (brazilHour < 3) {
+      // Ainda estamos no período que começou às 03:00 de ontem
+      const yesterday = new Date(Date.UTC(brazilYear, brazilMonth, brazilDay));
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      startYear = yesterday.getUTCFullYear();
+      startMonth = yesterday.getUTCMonth();
+      startDay = yesterday.getUTCDate();
+    }
+    
+    // Cria data UTC: 03:00 no Brasil = 06:00 UTC (UTC-3)
+    const start = new Date(Date.UTC(startYear, startMonth, startDay, 6, 0, 0, 0));
+    
+    // End é 24 horas depois (03:00 do dia seguinte no Brasil)
     const end = new Date(start);
-    end.setDate(end.getDate() + 1);
+    end.setUTCDate(end.getUTCDate() + 1);
     
     return { start, end };
   }
