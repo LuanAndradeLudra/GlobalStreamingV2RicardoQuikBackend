@@ -480,28 +480,13 @@ export class TwitchBitsGiveawayService {
       throw new BadRequestException('Cannot draw winner: at least 2 participants are required to draw a winner');
     }
 
-    // Calculate ticket ranges - ensure repicked participants are not included
-    const ranges: Array<{ id: string; display: string; start: number; end: number }> = [];
-    let start = 0;
+    // Calculate total tickets first
+    const totalTickets = participants.reduce((sum: number, p: any) => sum + p.tickets, 0);
 
-    for (const participant of participants) {
-      // Double check: skip if this participant is repicked
-      if (repickedParticipantIds.has(participant.id)) {
-        continue;
-      }
-
-      const display = `${participant.username}|BITS`;
-      const end = start + participant.tickets - 1;
-      ranges.push({
-        id: participant.id,
-        display,
-        start,
-        end,
-      });
-      start = end + 1;
-    }
-
-    const totalTickets = start; // start is now the total count
+    // Distribute tickets across multiple ranges for each participant
+    // This creates a more randomized distribution where each participant's tickets
+    // are spread across different ranges instead of being sequential
+    const ranges = this.distributeTicketsAcrossRanges(participants, totalTickets, giveawayId);
 
     // Generate hash of the participant list
     const listLines = ranges.map((r) => `${r.id};${r.display};${r.start};${r.end}`).join('\n');
@@ -689,6 +674,93 @@ export class TwitchBitsGiveawayService {
     } catch (error) {
       return false;
     }
+  }
+
+  /**
+   * Distribute tickets across multiple ranges for each participant.
+   * Each participant's tickets are spread across different ranges instead of being sequential.
+   * Uses deterministic randomization based on giveaway ID for consistency.
+   */
+  private distributeTicketsAcrossRanges(
+    participants: any[],
+    totalTickets: number,
+    seed: string,
+  ): Array<{ id: string; display: string; start: number; end: number }> {
+    // Create seeded random number generator
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      const char = seed.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+
+    const seededRandom = () => {
+      hash = ((hash << 5) - hash) + 1;
+      hash = hash & hash;
+      return Math.abs(hash) / 2147483647;
+    };
+
+    // Create array of available ticket slots (0 to totalTickets-1)
+    const availableSlots = Array.from({ length: totalTickets }, (_, i) => i);
+    
+    // Shuffle available slots deterministically
+    for (let i = availableSlots.length - 1; i > 0; i--) {
+      const j = Math.floor(seededRandom() * (i + 1));
+      [availableSlots[i], availableSlots[j]] = [availableSlots[j], availableSlots[i]];
+    }
+
+    const ranges: Array<{ id: string; display: string; start: number; end: number }> = [];
+    let slotIndex = 0;
+
+    // For each participant, assign their tickets from shuffled slots
+    for (const participant of participants) {
+      const participantTickets: number[] = [];
+      
+      // Collect tickets for this participant from shuffled slots
+      for (let i = 0; i < participant.tickets; i++) {
+        if (slotIndex < availableSlots.length) {
+          participantTickets.push(availableSlots[slotIndex]);
+          slotIndex++;
+        }
+      }
+
+      // Sort tickets to group consecutive ones into ranges
+      participantTickets.sort((a, b) => a - b);
+
+      // Group consecutive tickets into ranges
+      let rangeStart = participantTickets[0];
+      let rangeEnd = participantTickets[0];
+
+      for (let i = 1; i < participantTickets.length; i++) {
+        if (participantTickets[i] === rangeEnd + 1) {
+          // Consecutive, extend current range
+          rangeEnd = participantTickets[i];
+        } else {
+          // Not consecutive, save current range and start new one
+          ranges.push({
+            id: participant.id,
+            display: `${participant.username}|BITS`,
+            start: rangeStart,
+            end: rangeEnd,
+          });
+          rangeStart = participantTickets[i];
+          rangeEnd = participantTickets[i];
+        }
+      }
+
+      // Don't forget the last range
+      ranges.push({
+        id: participant.id,
+        display: `${participant.username}|BITS`,
+        start: rangeStart,
+        end: rangeEnd,
+      });
+    }
+
+    // Sort ranges by start position for binary search
+    ranges.sort((a, b) => a.start - b.start);
+
+    return ranges;
   }
 
   /**
