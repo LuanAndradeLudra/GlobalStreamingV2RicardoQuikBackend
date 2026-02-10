@@ -885,9 +885,7 @@ export class GiveawayService {
       });
 
       if (donationOverride) {
-        bitsTickets = Math.floor(
-          (input.totalBits / donationOverride.unitSize) * donationOverride.ticketsPerUnitSize,
-        );
+        bitsTickets = donationOverride.ticketsPerUnitSize
       } else {
         // Use global rule
         const bitsRule = await this.prisma.ticketGlobalDonationRule.findUnique({
@@ -924,9 +922,7 @@ export class GiveawayService {
       });
 
       if (donationOverride) {
-        giftTickets = Math.floor(
-          (input.totalGiftSubs / donationOverride.unitSize) * donationOverride.ticketsPerUnitSize,
-        );
+        giftTickets = donationOverride.ticketsPerUnitSize;
       } else {
         // Use global rule
         const giftRule = await this.prisma.ticketGlobalDonationRule.findUnique({
@@ -963,9 +959,7 @@ export class GiveawayService {
       });
 
       if (donationOverride) {
-        kickCoinsTickets = Math.floor(
-          (input.totalKickCoins / donationOverride.unitSize) * donationOverride.ticketsPerUnitSize,
-        );
+        kickCoinsTickets = donationOverride.ticketsPerUnitSize
       } else {
         // Use global rule
         const kickCoinsRule = await this.prisma.ticketGlobalDonationRule.findUnique({

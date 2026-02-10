@@ -296,22 +296,34 @@ twIDAQAB
           // Se o usuário doou kick coins, ele recebe 2 tickets fixos (independente do valor doado)
           if (kickCoins > 0) {
             // Adiciona participante ao banco de dados (entrada por KICK_COINS)
-            const participantKickCoins = await this.giveawayService.addParticipant(
-              activeGiveaway.userId,
-              activeGiveaway.streamGiveawayId,
-              {
-                platform: ConnectedPlatform.KICK,
-                externalUserId: userId,
-                username: username,
-                avatarUrl: avatarUrl,
-                method: EntryMethod.KICK_COINS,
-                tickets: 2, // 2 tickets fixos para qualquer doação de kick coins
-                metadata: {
-                  kickCoins,
-                  donationWindow: kickCoinsConfig.donationWindow,
+            const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
+              streamGiveawayId: activeGiveaway.streamGiveawayId,
+              platform: ConnectedPlatform.KICK,
+              adminUserId: activeGiveaway.userId,
+              role: 'NON_SUB', // Use NON_SUB to ensure baseTickets = 0
+              totalKickCoins: kickCoins, // Use totalKickCoins param for Kick Coins
+            });
+
+            // For donation-only entries, use ONLY the kick coins tickets, ignore base tickets
+            const coinsTickets = ticketInfo.kickCoinsTickets;
+
+            if (coinsTickets > 0) {
+              const participantKickCoins = await this.giveawayService.addParticipant(
+                activeGiveaway.userId,
+                activeGiveaway.streamGiveawayId,
+                {
+                  platform: ConnectedPlatform.KICK,
+                  externalUserId: userId,
+                  username: username,
+                  avatarUrl: avatarUrl,
+                  method: EntryMethod.KICK_COINS,
+                  tickets: coinsTickets, // Use the calculated kick coins tickets
+                  metadata: {
+                    kickCoins,
+                    donationWindow: kickCoinsConfig.donationWindow,
+                  },
                 },
-              },
-            );
+              );
 
             // Marca no Redis para dedupe
             await this.redisService.markParticipant(
@@ -340,7 +352,7 @@ twIDAQAB
               },
             });
 
-            entriesAdded.push(`KICK_COINS (2 tickets)`);
+            entriesAdded.push(`KICK_COINS (${coinsTickets} tickets)`);
           }
         }
       }
@@ -371,22 +383,39 @@ twIDAQAB
           // Se o usuário doou gift subs, ele recebe 2 tickets fixos (independente da quantidade doada)
           if (giftSubs > 0) {
             // Adiciona participante ao banco de dados (entrada por GIFT_SUB)
-            const participantGiftSub = await this.giveawayService.addParticipant(
-              activeGiveaway.userId,
-              activeGiveaway.streamGiveawayId,
-              {
-                platform: ConnectedPlatform.KICK,
-                externalUserId: userId,
-                username: username,
-                avatarUrl: avatarUrl,
-                method: EntryMethod.GIFT_SUB,
-                tickets: 2, // 2 tickets fixos para qualquer doação de gift subs
-                metadata: {
-                  giftSubAmount: giftSubs,
-                  donationWindow: giftSubConfig.donationWindow,
-                },
-              },
-            );
+            const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
+              streamGiveawayId: activeGiveaway.streamGiveawayId,
+              platform: ConnectedPlatform.KICK,
+              adminUserId: activeGiveaway.userId,
+              role: 'NON_SUB', // Use NON_SUB to ensure baseTickets = 0
+              totalGiftSubs: giftSubs,
+            });
+
+            // For donation-only entries, use ONLY the gift tickets, ignore base tickets
+            const giftTickets = ticketInfo.giftTickets;
+
+            if (giftTickets > 0) {
+              const participantGiftSub = await this.giveawayService.addParticipant(
+                activeGiveaway.userId,
+                activeGiveaway.streamGiveawayId,
+                {
+                  platform: ConnectedPlatform.KICK,
+                  externalUserId: userId,
+                  username: username,
+                  avatarUrl: avatarUrl,
+                  method: EntryMethod.GIFT_SUB,
+                  tickets: giftTickets, // Use the calculated gift tickets
+                  metadata: {
+                    role,
+                    giftSubs: giftSubs,
+                    baseTickets: ticketInfo.baseTickets,
+                    giftTickets: ticketInfo.giftTickets,
+                  },
+                  },
+                );
+  
+                this.logger.log(`✅ [Kick] GIFT_SUB entry added: ${giftTickets} tickets for ${giftSubs} subs`);
+
 
             // Marca no Redis para dedupe
             await this.redisService.markParticipant(
@@ -419,11 +448,14 @@ twIDAQAB
           }
         }
       }
+    }
+      
 
       // Log consolidado: userId e entradas adicionadas
       if (entriesAdded.length > 0) {
         this.logger.log(`✅ [Kick] userId ${userId} added entries: ${entriesAdded.join(', ')}`);
       }
+    }
     } catch (error) {
       this.logger.error(`❌ [Kick] Error processing chat message for userId ${userId}:`, error);
     }
@@ -754,6 +786,8 @@ twIDAQAB
 
   /**
    * Get Kick Coins donated by user in the specified window
+   * - DAILY: Fetches from Event table
+   * - WEEKLY/MONTHLY: Fetches from Kick API leaderboard
    */
   private async getKickCoinsForUser(
     adminUserId: string,
@@ -761,8 +795,35 @@ twIDAQAB
     window: DonationWindow,
   ): Promise<number> {
     try {
-      
-      // Get leaderboard from Kick API
+      // DAILY: Fetch from Event table
+      if (window === 'DAILY') {
+        const { start, end } = DateRangeHelper.getDailyRange();
+
+        // Get KICK_COINS events for today
+        const events = await this.prisma.event.findMany({
+          where: {
+            userId: adminUserId,
+            platform: ConnectedPlatform.KICK,
+            eventType: 'KICK_COINS',
+            externalUserId: kickUserId.toString(),
+            eventDate: {
+              gte: start,
+              lt: end,
+            },
+          },
+          select: {
+            amount: true,
+          },
+        });
+
+        // Sum up the kick coins amounts
+        const totalKickCoins = events.reduce((sum, event) => sum + (event.amount || 0), 0);
+
+        this.logger.log(`📊 [DAILY] Found ${totalKickCoins} Kick Coins from user ${kickUserId} (from Event table)`);
+        return totalKickCoins;
+      }
+
+      // WEEKLY or MONTHLY: Fetch from Kick API
       const response = await this.kickService.getKickCoinsLeaderboard(adminUserId);
 
       if (!response || !response.data) {
@@ -779,14 +840,9 @@ twIDAQAB
         case 'WEEKLY':
           leaderboard = response.data.week || [];
           break;
-        case 'DAILY':
-          // Kick doesn't have daily, use week as fallback
-          leaderboard = response.data.week || [];
-          break;
         default:
           leaderboard = response.data.month || [];
       }
-
 
       // Find user in leaderboard
       const userEntry = leaderboard.find((entry: any) => entry.user_id === kickUserId);
@@ -798,7 +854,7 @@ twIDAQAB
       // Get the donated amount (could be 'amount' or 'gifted_amount' depending on API)
       const amount = userEntry.gifted_amount || userEntry.amount || 0;
 
-      this.logger.log(`📊 Found ${amount} Kick Coins from user ${kickUserId} in ${window} window`);
+      this.logger.log(`📊 [${window}] Found ${amount} Kick Coins from user ${kickUserId} (from Kick API)`);
       return amount;
     } catch (error) {
       this.logger.error(`❌ Error fetching Kick Coins for user ${kickUserId}:`, error);
