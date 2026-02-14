@@ -1225,6 +1225,15 @@ export class GiveawayService {
 
     const isFirstDraw = previousWinners.length === 0 && streamGiveaway.status === StreamGiveawayStatus.OPEN;
 
+    // Get winner participant data
+    const winnerParticipant = await this.prisma.streamGiveawayParticipant.findUnique({
+      where: { id: winner.id },
+    });
+
+    if (!winnerParticipant) {
+      throw new BadRequestException(`Winner participant with ID ${winner.id} not found`);
+    }
+
     // Save new winner to database
     await (this.prisma as any).streamGiveawayWinner.create({
       data: {
@@ -1242,6 +1251,17 @@ export class GiveawayService {
         verified,
       },
     });
+
+    // Save winner data to Redis for message tracking (TTL: 60 seconds)
+    await this.redisService.setWinner({
+      streamGiveawayId,
+      username: winnerParticipant.username,
+      platform: winnerParticipant.platform,
+      externalUserId: winnerParticipant.externalUserId,
+      drawnAt: new Date().toISOString(),
+    });
+
+    this.logger.log(`🏆 Winner saved to Redis: ${winnerParticipant.username} (${winnerParticipant.platform})`);
 
     // If this is the first draw, change status from OPEN to DONE
     if (isFirstDraw) {
@@ -1508,19 +1528,29 @@ export class GiveawayService {
   }
 
   /**
-   * Get winner messages for a stream giveaway
-   * Returns winner data and all messages from the winner
+   * Get winner messages from Redis
+   * Returns winner data and their messages (if any)
    */
   async getWinnerMessages(streamGiveawayId: string): Promise<{
     winner: any;
     messages: any[];
   }> {
+    // Ensure the stream giveaway exists
+    const streamGiveaway = await this.prisma.streamGiveaway.findFirst({
+      where: { id: streamGiveawayId },
+    });
+
+    if (!streamGiveaway) {
+      throw new NotFoundException(`Stream giveaway with ID ${streamGiveawayId} not found`);
+    }
+
+    // Get winner data and messages from Redis
     const winner = await this.redisService.getWinner(streamGiveawayId);
     const messages = await this.redisService.getWinnerMessages(streamGiveawayId);
-    
+
     return {
-      winner,
-      messages,
+      winner: winner || null,
+      messages: messages || [],
     };
   }
 
