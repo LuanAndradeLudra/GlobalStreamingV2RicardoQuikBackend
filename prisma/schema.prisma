@@ -50,6 +50,7 @@ enum EntryMethod {
   KICK_NON_SUB
   YOUTUBE_SUB
   YOUTUBE_NON_SUB
+  VIP
 }
 
 enum WinnerStatus {
@@ -652,6 +653,21 @@ model IntegratedGiftSubsGiveawayWinner {
   @@index([integratedGiftSubsGiveawayId], map: "integrated_gift_subs_winner_giveaway_id_idx")
   @@index([integratedGiftSubsGiveawayId, status], map: "integrated_gift_subs_winner_giveaway_id_status_idx")
   @@index([winnerParticipantId], map: "integrated_gift_subs_winner_participant_id_idx")
+}
+
+// VipUser table - Registra usuários VIP com bonus de tickets
+model VipUser {
+  id               String            @id @default(uuid())
+  userId           String            // ID do admin dono do canal
+  platform         ConnectedPlatform // TWITCH ou KICK
+  platformUsername String            // Nick do usuário na plataforma
+  bonusTickets     Int               @default(5)
+  expiresAt        DateTime
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([userId, platform, platformUsername])
+  @@index([userId, expiresAt])
 }
 
 // Event table - Registra eventos de bits em tempo real

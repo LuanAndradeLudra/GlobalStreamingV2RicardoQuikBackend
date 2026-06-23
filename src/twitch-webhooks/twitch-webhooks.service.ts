@@ -5,6 +5,7 @@ import { StreamGiveawayRedisService } from '../stream-giveaway-redis/stream-give
 import { RealtimeGateway } from '../realtime-gateway/realtime-gateway.gateway';
 import { GiveawayService } from '../giveaway/giveaway.service';
 import { TwitchService } from '../twitch/twitch.service';
+import { VipUsersService } from '../vip-users/vip-users.service';
 import { ConnectedPlatform, EntryMethod } from '@prisma/client';
 import { DateRangeHelper } from '../utils/date-range.helper';
 import * as crypto from 'crypto';
@@ -21,6 +22,7 @@ export class TwitchWebhooksService {
     private readonly realtimeGateway: RealtimeGateway,
     private readonly giveawayService: GiveawayService,
     private readonly twitchService: TwitchService,
+    private readonly vipUsersService: VipUsersService,
   ) {
     this.webhookSecret = this.configService.get<string>('TWITCH_WEBHOOK_SECRET') || '';
     
@@ -498,6 +500,67 @@ export class TwitchWebhooksService {
               entriesAdded.push(`GIFT_SUB (${ticketInfo.giftTickets} tickets)`);
             }
           }
+        }
+      }
+
+      // ✅ Verifica e adiciona entrada por VIP (se o usuário for VIP ativo)
+      const isDuplicateVip = await this.redisService.checkDuplicate(
+        activeGiveaway.streamGiveawayId,
+        ConnectedPlatform.TWITCH,
+        userId,
+        EntryMethod.VIP,
+      );
+
+      if (!isDuplicateVip) {
+        const vipUser = await this.vipUsersService.findActiveVip(
+          activeGiveaway.userId,
+          ConnectedPlatform.TWITCH,
+          username,
+        );
+
+        if (vipUser) {
+          const participantVip = await this.giveawayService.addParticipant(
+            activeGiveaway.userId,
+            activeGiveaway.streamGiveawayId,
+            {
+              platform: ConnectedPlatform.TWITCH,
+              externalUserId: userId,
+              username: username,
+              avatarUrl: avatarUrl,
+              method: EntryMethod.VIP,
+              tickets: vipUser.bonusTickets,
+              metadata: {
+                vipId: vipUser.id,
+                bonusTickets: vipUser.bonusTickets,
+              },
+            },
+          );
+
+          await this.redisService.markParticipant(
+            activeGiveaway.streamGiveawayId,
+            ConnectedPlatform.TWITCH,
+            userId,
+            EntryMethod.VIP,
+          );
+
+          await this.redisService.incrementMetric(
+            activeGiveaway.streamGiveawayId,
+            'total_participants',
+          );
+
+          this.realtimeGateway.emitParticipantAdded({
+            streamGiveawayId: activeGiveaway.streamGiveawayId,
+            participant: {
+              id: participantVip.id,
+              username: participantVip.username,
+              platform: participantVip.platform,
+              method: participantVip.method,
+              tickets: participantVip.tickets,
+              avatarUrl: participantVip.avatarUrl || undefined,
+            },
+          });
+
+          entriesAdded.push(`VIP (${vipUser.bonusTickets} tickets)`);
         }
       }
 

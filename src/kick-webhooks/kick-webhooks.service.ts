@@ -5,6 +5,7 @@ import { StreamGiveawayRedisService } from '../stream-giveaway-redis/stream-give
 import { RealtimeGateway } from '../realtime-gateway/realtime-gateway.gateway';
 import { KickService } from '../kick/kick.service';
 import { GiveawayService } from '../giveaway/giveaway.service';
+import { VipUsersService } from '../vip-users/vip-users.service';
 import { ConnectedPlatform, EntryMethod, DonationWindow } from '@prisma/client';
 import { DateRangeHelper } from '../utils/date-range.helper';
 
@@ -27,6 +28,7 @@ twIDAQAB
     private readonly realtimeGateway: RealtimeGateway,
     private readonly kickService: KickService,
     private readonly giveawayService: GiveawayService,
+    private readonly vipUsersService: VipUsersService,
   ) {}
 
   /**
@@ -452,6 +454,67 @@ twIDAQAB
       }
     }
       
+
+      // ✅ Verifica e adiciona entrada por VIP (se o usuário for VIP ativo)
+      const isDuplicateVip = await this.redisService.checkDuplicate(
+        activeGiveaway.streamGiveawayId,
+        ConnectedPlatform.KICK,
+        userId,
+        EntryMethod.VIP,
+      );
+
+      if (!isDuplicateVip) {
+        const vipUser = await this.vipUsersService.findActiveVip(
+          activeGiveaway.userId,
+          ConnectedPlatform.KICK,
+          username,
+        );
+
+        if (vipUser) {
+          const participantVip = await this.giveawayService.addParticipant(
+            activeGiveaway.userId,
+            activeGiveaway.streamGiveawayId,
+            {
+              platform: ConnectedPlatform.KICK,
+              externalUserId: userId,
+              username: username,
+              avatarUrl: avatarUrl,
+              method: EntryMethod.VIP,
+              tickets: vipUser.bonusTickets,
+              metadata: {
+                vipId: vipUser.id,
+                bonusTickets: vipUser.bonusTickets,
+              },
+            },
+          );
+
+          await this.redisService.markParticipant(
+            activeGiveaway.streamGiveawayId,
+            ConnectedPlatform.KICK,
+            userId,
+            EntryMethod.VIP,
+          );
+
+          await this.redisService.incrementMetric(
+            activeGiveaway.streamGiveawayId,
+            'total_participants',
+          );
+
+          this.realtimeGateway.emitParticipantAdded({
+            streamGiveawayId: activeGiveaway.streamGiveawayId,
+            participant: {
+              id: participantVip.id,
+              username: participantVip.username,
+              platform: participantVip.platform,
+              method: participantVip.method,
+              tickets: participantVip.tickets,
+              avatarUrl: participantVip.avatarUrl || undefined,
+            },
+          });
+
+          entriesAdded.push(`VIP (${vipUser.bonusTickets} tickets)`);
+        }
+      }
 
       // Log consolidado: userId e entradas adicionadas
       if (entriesAdded.length > 0) {

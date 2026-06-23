@@ -6,6 +6,7 @@ import { StreamGiveawayRedisModule } from '../stream-giveaway-redis/stream-givea
 import { RealtimeGatewayModule } from '../realtime-gateway/realtime-gateway.module';
 import { GiveawayModule } from '../giveaway/giveaway.module';
 import { KickModule } from '../kick/kick.module';
+import { VipUsersModule } from '../vip-users/vip-users.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { KickModule } from '../kick/kick.module';
     RealtimeGatewayModule,
     GiveawayModule,
     KickModule,
+    VipUsersModule,
   ],
   controllers: [KickWebhooksController],
   providers: [KickWebhooksService],

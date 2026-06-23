@@ -6,6 +6,7 @@ import { RealtimeGatewayModule } from '../realtime-gateway/realtime-gateway.modu
 import { GiveawayModule } from '../giveaway/giveaway.module';
 import { TwitchModule } from '../twitch/twitch.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { VipUsersModule } from '../vip-users/vip-users.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { PrismaModule } from '../prisma/prisma.module';
     RealtimeGatewayModule,
     GiveawayModule,
     TwitchModule,
+    VipUsersModule,
   ],
   controllers: [TwitchWebhooksController],
   providers: [TwitchWebhooksService],

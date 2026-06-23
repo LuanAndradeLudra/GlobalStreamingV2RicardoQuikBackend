@@ -24,6 +24,7 @@ import { YouTubeChatModule } from './youtube-chat/youtube-chat.module';
 import { TokenRefreshCronModule } from './token-refresh-cron/token-refresh-cron.module';
 import { CleanupCronModule } from './cleanup-cron/cleanup-cron.module';
 import { EventsModule } from './events/events.module';
+import { VipUsersModule } from './vip-users/vip-users.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { EventsModule } from './events/events.module';
     TokenRefreshCronModule,
     CleanupCronModule,
     EventsModule,
+    VipUsersModule,
   ],
 })
 export class AppModule {}
