@@ -6,6 +6,7 @@ import { CreateIntegratedGiftSubsGiveawayDto } from './dto/create-integrated-gif
 import { UpdateIntegratedGiftSubsGiveawayDto } from './dto/update-integrated-gift-subs-giveaway.dto';
 import { TwitchService } from '../twitch/twitch.service';
 import { KickService } from '../kick/kick.service';
+import { MonthlyWinLimitService } from '../monthly-win-limit/monthly-win-limit.service';
 import * as crypto from 'crypto';
 
 interface TwitchGiftSubsLeaderboardResponse {
@@ -41,6 +42,7 @@ export class IntegratedGiftSubsGiveawayService {
     private readonly configService: ConfigService,
     private readonly twitchService: TwitchService,
     private readonly kickService: KickService,
+    private readonly monthlyWinLimitService: MonthlyWinLimitService,
   ) {}
 
   /**
@@ -459,10 +461,16 @@ export class IntegratedGiftSubsGiveawayService {
     // Get participants that haven't won yet
     const existingWinners = giveaway.winners.filter((w: any) => w.status === 'WINNER');
     const winnerIds = new Set(existingWinners.map((w: any) => w.winnerParticipantId));
-    const eligibleParticipants = giveaway.participants.filter((p: any) => !winnerIds.has(p.id));
+    let eligibleParticipants = giveaway.participants.filter((p: any) => !winnerIds.has(p.id));
+
+    // Exclude users who already hit the monthly win limit from provably-fair ranges
+    eligibleParticipants = await this.monthlyWinLimitService.filterEligibleForDraw(
+      userId,
+      eligibleParticipants,
+    );
 
     if (eligibleParticipants.length === 0) {
-      throw new BadRequestException('No eligible participants remaining');
+      throw new BadRequestException('No eligible participants remaining (won already or monthly win limit)');
     }
 
     // Calculate total tickets and build ranges

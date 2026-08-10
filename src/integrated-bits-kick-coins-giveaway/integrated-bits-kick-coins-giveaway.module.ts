@@ -4,23 +4,12 @@ import { IntegratedBitsKickCoinsGiveawayController } from './integrated-bits-kic
 import { PrismaModule } from '../prisma/prisma.module';
 import { TwitchModule } from '../twitch/twitch.module';
 import { KickModule } from '../kick/kick.module';
+import { MonthlyWinLimitModule } from '../monthly-win-limit/monthly-win-limit.module';
 
 @Module({
-  imports: [PrismaModule, TwitchModule, KickModule],
+  imports: [PrismaModule, TwitchModule, KickModule, MonthlyWinLimitModule],
   controllers: [IntegratedBitsKickCoinsGiveawayController],
   providers: [IntegratedBitsKickCoinsGiveawayService],
   exports: [IntegratedBitsKickCoinsGiveawayService],
 })
 export class IntegratedBitsKickCoinsGiveawayModule {}
-
-
-
-
-
-
-
-
-
-
-
-

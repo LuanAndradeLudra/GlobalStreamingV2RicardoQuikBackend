@@ -3,10 +3,11 @@ import { GiveawayService } from './giveaway.service';
 import { GiveawayController } from './giveaway.controller';
 import { StreamGiveawayRedisModule } from '../stream-giveaway-redis/stream-giveaway-redis.module';
 import { RealtimeGatewayModule } from '../realtime-gateway/realtime-gateway.module';
+import { MonthlyWinLimitModule } from '../monthly-win-limit/monthly-win-limit.module';
 
 // GiveawayModule encapsulates the core of giveaways, winner selection, and metrics.
 @Module({
-  imports: [StreamGiveawayRedisModule, RealtimeGatewayModule],
+  imports: [StreamGiveawayRedisModule, RealtimeGatewayModule, MonthlyWinLimitModule],
   controllers: [GiveawayController],
   providers: [GiveawayService],
   exports: [GiveawayService],

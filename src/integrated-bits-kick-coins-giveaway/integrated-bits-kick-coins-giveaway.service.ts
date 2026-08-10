@@ -7,6 +7,7 @@ import { UpdateIntegratedBitsKickCoinsGiveawayDto } from './dto/update-integrate
 import { DrawResponseDto } from '../giveaway/dto/draw-response.dto';
 import { TwitchService } from '../twitch/twitch.service';
 import { KickService } from '../kick/kick.service';
+import { MonthlyWinLimitService } from '../monthly-win-limit/monthly-win-limit.service';
 import * as crypto from 'crypto';
 
 type IntegratedBitsKickCoinsCategory = 'DAILY' | 'WEEKLY' | 'MONTHLY';
@@ -52,6 +53,7 @@ export class IntegratedBitsKickCoinsGiveawayService {
     private readonly configService: ConfigService,
     private readonly twitchService: TwitchService,
     private readonly kickService: KickService,
+    private readonly monthlyWinLimitService: MonthlyWinLimitService,
   ) {}
 
   /**
@@ -509,10 +511,13 @@ export class IntegratedBitsKickCoinsGiveawayService {
       ],
     });
 
-    const participants = allParticipants.filter((p: any) => !repickedParticipantIds.has(p.id));
+    let participants = allParticipants.filter((p: any) => !repickedParticipantIds.has(p.id));
+
+    // Exclude users who already hit the monthly win limit from provably-fair ranges
+    participants = await this.monthlyWinLimitService.filterEligibleForDraw(userId, participants);
 
     if (participants.length === 0) {
-      throw new BadRequestException('Cannot draw winner: no eligible participants found');
+      throw new BadRequestException('Cannot draw winner: no eligible participants found (repicked or monthly win limit)');
     }
 
     if (participants.length === 1) {

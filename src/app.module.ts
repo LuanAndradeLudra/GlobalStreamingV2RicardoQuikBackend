@@ -25,6 +25,7 @@ import { TokenRefreshCronModule } from './token-refresh-cron/token-refresh-cron.
 import { CleanupCronModule } from './cleanup-cron/cleanup-cron.module';
 import { EventsModule } from './events/events.module';
 import { VipUsersModule } from './vip-users/vip-users.module';
+import { MonthlyWinLimitModule } from './monthly-win-limit/monthly-win-limit.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { VipUsersModule } from './vip-users/vip-users.module';
     CleanupCronModule,
     EventsModule,
     VipUsersModule,
+    MonthlyWinLimitModule,
   ],
 })
 export class AppModule {}

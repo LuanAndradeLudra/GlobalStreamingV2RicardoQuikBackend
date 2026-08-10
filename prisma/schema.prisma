@@ -124,6 +124,8 @@ model User {
   twitchGiftSubsGiveaways         TwitchGiftSubsGiveaway[]
   integratedBitsKickCoinsGiveaways IntegratedBitsKickCoinsGiveaway[]
   integratedGiftSubsGiveaways     IntegratedGiftSubsGiveaway[]
+  monthlyWinLimitConfig           MonthlyWinLimitConfig?
+  monthlyWinExtraWinners          MonthlyWinExtraWinner[]
 
   @@unique([provider, providerId])
 }
@@ -668,6 +670,34 @@ model VipUser {
 
   @@index([userId, platform, platformUsername])
   @@index([userId, expiresAt])
+}
+
+// Limite mensal de vitórias por usuário nos sorteios (feature ligada por padrão)
+model MonthlyWinLimitConfig {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  enabled         Boolean  @default(true)
+  maxWinsPerMonth Int      @default(2)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Usuários autorizados a ganhar além do limite mensal padrão (vencedores extras)
+model MonthlyWinExtraWinner {
+  id               String            @id @default(uuid())
+  userId           String
+  platform         ConnectedPlatform // TWITCH ou KICK
+  platformUsername String            // Nick na plataforma
+  maxWins          Int               // Quantas vezes pode ganhar no mês (chances)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform, platformUsername])
+  @@index([userId])
 }
 
 // Event table - Registra eventos de bits em tempo real

@@ -6,6 +6,7 @@ import { CreateTwitchBitsGiveawayDto } from './dto/create-twitch-bits-giveaway.d
 import { UpdateTwitchBitsGiveawayDto } from './dto/update-twitch-bits-giveaway.dto';
 import { DrawResponseDto } from '../giveaway/dto/draw-response.dto';
 import { TwitchService } from '../twitch/twitch.service';
+import { MonthlyWinLimitService } from '../monthly-win-limit/monthly-win-limit.service';
 import * as crypto from 'crypto';
 
 // Import enum type from Prisma
@@ -27,6 +28,7 @@ export class TwitchBitsGiveawayService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly twitchService: TwitchService,
+    private readonly monthlyWinLimitService: MonthlyWinLimitService,
   ) {}
 
   /**
@@ -469,10 +471,16 @@ export class TwitchBitsGiveawayService {
     });
 
     // Filter out repicked participants
-    const participants = allParticipants.filter((p: any) => !repickedParticipantIds.has(p.id));
+    let participants = allParticipants.filter((p: any) => !repickedParticipantIds.has(p.id));
+
+    // Exclude users who already hit the monthly win limit from provably-fair ranges
+    participants = await this.monthlyWinLimitService.filterEligibleForDraw(
+      userId,
+      participants.map((p: any) => ({ ...p, platform: 'TWITCH' })),
+    );
 
     if (participants.length === 0) {
-      throw new BadRequestException('Cannot draw winner: no eligible participants found (all have been repicked)');
+      throw new BadRequestException('Cannot draw winner: no eligible participants found (all have been repicked or reached monthly win limit)');
     }
 
     // Prevent drawing if there is only 1 participant

@@ -13,6 +13,7 @@ import { CreateParticipantDto } from './dto/create-participant.dto';
 import { CreateParticipantsBatchDto } from './dto/create-participants-batch.dto';
 import { DrawResponseDto } from './dto/draw-response.dto';
 import { SetGiftSubsLeaderboardDto } from './dto/set-gift-subs-leaderboard.dto';
+import { MonthlyWinLimitService } from '../monthly-win-limit/monthly-win-limit.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -22,6 +23,7 @@ export class GiveawayService {
     private readonly configService: ConfigService,
     private readonly redisService: StreamGiveawayRedisService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly monthlyWinLimitService: MonthlyWinLimitService,
   ) {}
 
   /**
@@ -1159,10 +1161,13 @@ export class GiveawayService {
     });
 
     // Filter out repicked participants
-    const participants = allParticipants.filter((p) => !repickedParticipantIds.has(p.id));
+    let participants = allParticipants.filter((p) => !repickedParticipantIds.has(p.id));
+
+    // Exclude users who already hit the monthly win limit from provably-fair ranges
+    participants = await this.monthlyWinLimitService.filterEligibleForDraw(userId, participants);
 
     if (participants.length === 0) {
-      throw new BadRequestException('Cannot draw winner: no eligible participants found (all have been repicked)');
+      throw new BadRequestException('Cannot draw winner: no eligible participants found (all have been repicked or reached monthly win limit)');
     }
 
     // Calculate ticket ranges - ensure repicked participants are not included

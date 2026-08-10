@@ -6,6 +6,7 @@ import { CreateKickGiftSubsGiveawayDto } from './dto/create-kick-gift-subs-givea
 import { UpdateKickGiftSubsGiveawayDto } from './dto/update-kick-gift-subs-giveaway.dto';
 import { DrawResponseDto } from '../giveaway/dto/draw-response.dto';
 import { KickService } from '../kick/kick.service';
+import { MonthlyWinLimitService } from '../monthly-win-limit/monthly-win-limit.service';
 import * as crypto from 'crypto';
 
 interface KickLeaderboardResponse {
@@ -35,6 +36,7 @@ export class KickGiftSubsGiveawayService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly kickService: KickService,
+    private readonly monthlyWinLimitService: MonthlyWinLimitService,
   ) {}
 
   /**
@@ -491,10 +493,16 @@ export class KickGiftSubsGiveawayService {
     });
 
     // Filter out repicked participants
-    const participants = allParticipants.filter((p) => !repickedParticipantIds.has(p.id));
+    let participants = allParticipants.filter((p) => !repickedParticipantIds.has(p.id));
+
+    // Exclude users who already hit the monthly win limit from provably-fair ranges
+    participants = await this.monthlyWinLimitService.filterEligibleForDraw(
+      userId,
+      participants.map((p) => ({ ...p, platform: 'KICK' as const })),
+    );
 
     if (participants.length === 0) {
-      throw new BadRequestException('Cannot draw winner: no eligible participants found (all have been repicked)');
+      throw new BadRequestException('Cannot draw winner: no eligible participants found (all have been repicked or reached monthly win limit)');
     }
 
     // Prevent drawing if there is only 1 participant
