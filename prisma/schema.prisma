@@ -104,6 +104,11 @@ enum EventType {
   KICK_COINS        // Kick coins gifted
 }
 
+enum VipSource {
+  MANUAL
+  INTEGRATION
+}
+
 model User {
   id                        String                     @id @default(uuid())
   email                     String                     @unique
@@ -664,10 +669,15 @@ model VipUser {
   platform         ConnectedPlatform // TWITCH ou KICK
   platformUsername String            // Nick do usuário na plataforma
   bonusTickets     Int               @default(5)
-  expiresAt        DateTime
+  expiresAt        DateTime?         // null = ativo até ser removido
+  email            String?
+  displayName      String?
+  externalId       String?           // ID do VIP na ferramenta externa
+  source           VipSource         @default(MANUAL)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
+  @@unique([userId, externalId])
   @@index([userId, platform, platformUsername])
   @@index([userId, expiresAt])
 }

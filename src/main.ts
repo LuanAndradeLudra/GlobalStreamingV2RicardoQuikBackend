@@ -29,7 +29,7 @@ async function bootstrap() {
       : frontendUrl,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key'],
   });
 
 
@@ -55,6 +55,15 @@ async function bootstrap() {
         in: 'header',
       },
       'JWT-auth',
+    )
+    .addApiKey(
+      {
+        type: 'apiKey',
+        in: 'header',
+        name: 'X-Api-Key',
+        description: 'Valor de VIP_INTEGRATION_API_KEY. Também aceita Authorization: Bearer.',
+      },
+      'vip-api-key',
     )
     .build();
 

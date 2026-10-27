@@ -63,7 +63,7 @@ export class VipUsersService {
         userId: adminUserId,
         platform,
         platformUsername: { equals: username, mode: 'insensitive' },
-        expiresAt: { gt: new Date() },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       },
     });
   }
