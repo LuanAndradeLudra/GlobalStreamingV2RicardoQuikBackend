@@ -666,18 +666,18 @@ model IntegratedGiftSubsGiveawayWinner {
 model VipUser {
   id               String            @id @default(uuid())
   userId           String            // ID do admin dono do canal
-  platform         ConnectedPlatform // TWITCH ou KICK
-  platformUsername String            // Nick do usuário na plataforma
+  platform         ConnectedPlatform // TWITCH
+  platformUsername String            // Nick na Twitch, como foi digitado
+  usernameKey      String            // Nick em minúsculas, usado para não duplicar
   bonusTickets     Int               @default(5)
   expiresAt        DateTime?         // null = ativo até ser removido
   email            String?
   displayName      String?
-  externalId       String?           // ID do VIP na ferramenta externa
   source           VipSource         @default(MANUAL)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
-  @@unique([userId, externalId])
+  @@unique([userId, platform, usernameKey])
   @@index([userId, platform, platformUsername])
   @@index([userId, expiresAt])
 }

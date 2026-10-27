@@ -1,5 +1,4 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ConnectedPlatform } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
@@ -16,13 +15,6 @@ import {
 } from 'class-validator';
 
 export class VipWebhookDataDto {
-  @ApiPropertyOptional({ example: 'art-1842' })
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(200)
-  externalId?: string;
-
   @ApiPropertyOptional({ example: 'fulano@email.com' })
   @IsOptional()
   @IsEmail()
@@ -34,23 +26,14 @@ export class VipWebhookDataDto {
   @MaxLength(200)
   name?: string;
 
-  @ApiPropertyOptional({
-    enum: ['TWITCH', 'KICK'],
-    description: 'Obrigatório em vip.activated.',
-    example: 'TWITCH',
-  })
-  @IsOptional()
-  @IsIn(['TWITCH', 'KICK'])
-  platform?: ConnectedPlatform;
-
-  @ApiPropertyOptional({
-    description: 'Nick na Twitch ou na Kick. Obrigatório em vip.activated.',
+  @ApiProperty({
+    description: 'Nick na Twitch, sem @.',
     example: 'fulano',
   })
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(100)
-  platformUsername?: string;
+  platformUsername: string;
 
   @ApiPropertyOptional({ minimum: 1, maximum: 1000, example: 5 })
   @IsOptional()

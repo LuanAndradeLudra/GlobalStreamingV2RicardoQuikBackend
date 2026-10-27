@@ -31,7 +31,7 @@ export class VipIntegrationController {
   @ApiOperation({
     summary: 'Cadastra ou atualiza um VIP',
     description:
-      'Se externalId já existir, atualiza esse registro. Senão, procura o mesmo nick na plataforma. Campos omitidos são mantidos. expiresAt null deixa o VIP ativo até ser removido.',
+      'Procura o mesmo nick na Twitch. Campos omitidos são mantidos. expiresAt null deixa o VIP ativo até ser removido.',
   })
   async upsert(
     @CurrentUser() user: User,
@@ -44,7 +44,7 @@ export class VipIntegrationController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Remove um VIP',
-    description: 'Identifique por externalId ou por platform + platformUsername.',
+    description: 'Identifique pelo nick da Twitch.',
   })
   async remove(@CurrentUser() user: User, @Body() dto: RemoveVipIntegrationDto): Promise<void> {
     return this.vipIntegrationService.remove(user.id, dto);

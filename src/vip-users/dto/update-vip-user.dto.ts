@@ -1,6 +1,15 @@
-import { IsInt, IsDateString, Min, Max, IsOptional } from 'class-validator';
+import { IsEmail, IsInt, IsDateString, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class UpdateVipUserDto {
+  @IsOptional()
+  @IsEmail()
+  email?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  name?: string | null;
+
   @IsOptional()
   @IsInt()
   @Min(1)
@@ -9,5 +18,5 @@ export class UpdateVipUserDto {
 
   @IsOptional()
   @IsDateString()
-  expiresAt?: string;
+  expiresAt?: string | null;
 }

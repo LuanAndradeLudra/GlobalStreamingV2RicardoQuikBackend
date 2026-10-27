@@ -9,10 +9,8 @@ const DEFAULT_BONUS_TICKETS = 5;
 
 export interface VipIntegrationView {
   id: string;
-  externalId: string | null;
   email: string | null;
   name: string | null;
-  platform: ConnectedPlatform;
   platformUsername: string;
   bonusTickets: number;
   expiresAt: Date | null;
@@ -29,8 +27,8 @@ export class VipIntegrationService {
 
   async list(userId: string): Promise<VipIntegrationView[]> {
     const vips = await this.prisma.vipUser.findMany({
-      where: { userId },
-      orderBy: [{ platform: 'asc' }, { platformUsername: 'asc' }],
+      where: { userId, platform: ConnectedPlatform.TWITCH },
+      orderBy: [{ platformUsername: 'asc' }],
     });
     return vips.map((vip) => this.toView(vip));
   }
@@ -41,7 +39,7 @@ export class VipIntegrationService {
   }
 
   async remove(userId: string, dto: RemoveVipIntegrationDto): Promise<void> {
-    const vip = await this.findByIdentity(this.prisma, userId, dto);
+    const vip = await this.findByUsername(this.prisma, userId, dto.platformUsername);
     if (!vip) throw new NotFoundException('VIP não encontrado');
     await this.prisma.vipUser.delete({ where: { id: vip.id } });
   }
@@ -61,6 +59,7 @@ export class VipIntegrationService {
         const removed = await tx.vipUser.deleteMany({
           where: {
             userId,
+            platform: ConnectedPlatform.TWITCH,
             source: VipSource.INTEGRATION,
             ...(keptIds.length > 0 ? { id: { notIn: keptIds } } : {}),
           },
@@ -79,24 +78,13 @@ export class VipIntegrationService {
     vip?: VipIntegrationView;
   }> {
     if (dto.event === 'vip.deactivated') {
-      const vip = await this.findByIdentity(this.prisma, userId, dto.data);
+      const vip = await this.findByUsername(this.prisma, userId, dto.data.platformUsername);
       if (!vip) return { ok: true, event: dto.event, removed: false };
       await this.prisma.vipUser.delete({ where: { id: vip.id } });
       return { ok: true, event: dto.event, removed: true };
     }
 
-    const platformUsername = dto.data.platformUsername?.trim();
-    if (!dto.data.platform || !platformUsername) {
-      throw new BadRequestException(
-        'platform e platformUsername são obrigatórios para ativar um VIP. O bônus entra no sorteio pelo nick da Twitch ou da Kick.',
-      );
-    }
-
-    const vip = await this.upsert(userId, {
-      ...dto.data,
-      platform: dto.data.platform,
-      platformUsername,
-    });
+    const vip = await this.upsert(userId, dto.data);
     return { ok: true, event: dto.event, vip };
   }
 
@@ -106,16 +94,12 @@ export class VipIntegrationService {
     dto: UpsertVipIntegrationDto,
   ): Promise<VipUser> {
     const platformUsername = dto.platformUsername.trim();
-    const externalId = this.clean(dto.externalId);
-    const existing = await this.findForUpsert(db, userId, {
-      externalId,
-      platform: dto.platform,
-      platformUsername,
-    });
+    const existing = await this.findByUsername(db, userId, platformUsername);
 
     const data = {
-      platform: dto.platform,
+      platform: ConnectedPlatform.TWITCH,
       platformUsername,
+      usernameKey: platformUsername.toLowerCase(),
       bonusTickets: dto.bonusTickets ?? existing?.bonusTickets ?? DEFAULT_BONUS_TICKETS,
       expiresAt:
         dto.expiresAt !== undefined
@@ -129,7 +113,6 @@ export class VipIntegrationService {
           : existing?.email ?? null,
       displayName:
         dto.name !== undefined ? this.clean(dto.name) ?? null : existing?.displayName ?? null,
-      externalId: externalId ?? existing?.externalId ?? null,
       source: VipSource.INTEGRATION,
     };
 
@@ -142,51 +125,17 @@ export class VipIntegrationService {
     });
   }
 
-  private async findForUpsert(
-    db: Db,
-    userId: string,
-    identity: { externalId?: string; platform: ConnectedPlatform; platformUsername: string },
-  ): Promise<VipUser | null> {
-    const byExternal = identity.externalId
-      ? await db.vipUser.findFirst({ where: { userId, externalId: identity.externalId } })
-      : null;
-    const byUsername = await db.vipUser.findFirst({
-      where: {
-        userId,
-        platform: identity.platform,
-        platformUsername: { equals: identity.platformUsername, mode: 'insensitive' },
-        ...(byExternal ? { id: { not: byExternal.id } } : {}),
-      },
-    });
-
-    if (byExternal && byUsername) {
-      await db.vipUser.delete({ where: { id: byUsername.id } });
-    }
-
-    return byExternal ?? byUsername;
-  }
-
-  private async findByIdentity(
-    db: Db,
-    userId: string,
-    identity: { externalId?: string; platform?: ConnectedPlatform; platformUsername?: string },
-  ): Promise<VipUser | null> {
-    const externalId = this.clean(identity.externalId);
-    const platformUsername = identity.platformUsername?.trim();
-
-    if (!externalId && !(identity.platform && platformUsername)) {
-      throw new BadRequestException('Informe externalId ou platform + platformUsername');
-    }
-
-    if (externalId) {
-      return db.vipUser.findFirst({ where: { userId, externalId } });
+  private async findByUsername(db: Db, userId: string, platformUsername: string): Promise<VipUser | null> {
+    const username = platformUsername.trim();
+    if (!username) {
+      throw new BadRequestException('platformUsername é obrigatório');
     }
 
     return db.vipUser.findFirst({
       where: {
         userId,
-        platform: identity.platform,
-        platformUsername: { equals: platformUsername, mode: 'insensitive' },
+        platform: ConnectedPlatform.TWITCH,
+        usernameKey: username.toLowerCase(),
       },
     });
   }
@@ -199,10 +148,8 @@ export class VipIntegrationService {
   private toView(vip: VipUser): VipIntegrationView {
     return {
       id: vip.id,
-      externalId: vip.externalId,
       email: vip.email,
       name: vip.displayName,
-      platform: vip.platform,
       platformUsername: vip.platformUsername,
       bonusTickets: vip.bonusTickets,
       expiresAt: vip.expiresAt,

@@ -1,11 +1,18 @@
-import { IsEnum, IsString, IsInt, IsDateString, Min, Max } from 'class-validator';
-import { ConnectedPlatform } from '@prisma/client';
+import { IsEmail, IsString, IsInt, IsDateString, IsNotEmpty, IsOptional, Max, MaxLength, Min } from 'class-validator';
 
 export class CreateVipUserDto {
-  @IsEnum(['TWITCH', 'KICK'])
-  platform: ConnectedPlatform;
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  name?: string;
 
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
   platformUsername: string;
 
   @IsInt()

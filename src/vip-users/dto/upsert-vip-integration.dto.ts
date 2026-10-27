@@ -1,10 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ConnectedPlatform } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
   IsEmail,
-  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -15,15 +13,6 @@ import {
 } from 'class-validator';
 
 export class UpsertVipIntegrationDto {
-  @ApiPropertyOptional({
-    description: 'ID do VIP na ferramenta de vocês. Usado para atualizar e remover sem depender do nick.',
-    example: 'art-1842',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  externalId?: string;
-
   @ApiPropertyOptional({ example: 'fulano@email.com' })
   @IsOptional()
   @IsEmail()
@@ -36,15 +25,7 @@ export class UpsertVipIntegrationDto {
   name?: string;
 
   @ApiProperty({
-    enum: ['TWITCH', 'KICK'],
-    description: 'Onde o nick é usado no chat. O bônus só entra no sorteio da Twitch ou da Kick.',
-    example: 'TWITCH',
-  })
-  @IsIn(['TWITCH', 'KICK'])
-  platform: ConnectedPlatform;
-
-  @ApiProperty({
-    description: 'Nick na Twitch ou na Kick, sem @. O sorteio compara esse nick com quem fala no chat.',
+    description: 'Nick na Twitch, sem @. O sorteio compara esse nick com quem fala no chat.',
     example: 'fulano',
   })
   @IsString()
