@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  IsDateString,
   IsEmail,
   IsIn,
   IsInt,
@@ -13,6 +12,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { IsVipExpiresAt } from '../is-vip-expires-at';
 
 export class VipWebhookDataDto {
   @ApiPropertyOptional({ example: 'fulano@email.com' })
@@ -45,7 +45,7 @@ export class VipWebhookDataDto {
 
   @ApiPropertyOptional({ nullable: true, example: null })
   @IsOptional()
-  @IsDateString()
+  @IsVipExpiresAt()
   expiresAt?: string | null;
 }
 

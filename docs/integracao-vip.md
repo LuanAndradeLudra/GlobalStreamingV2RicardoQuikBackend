@@ -211,12 +211,22 @@ Se o VIP já não existir, a resposta continua `200` com `"removed": false`. Em 
 
 | HTTP | Quando |
 | --- | --- |
-| `400` | JSON inválido, campo fora da regra, ou nick ausente |
+| `400` | JSON inválido, campo fora da regra, nick ausente ou `expiresAt` incompleto |
 | `401` | Chave ausente ou diferente de `VIP_INTEGRATION_API_KEY` |
 | `404` | `DELETE` de um VIP que não existe |
 | `503` | Chave válida, mas não há um admin definido para receber os VIPs |
 
-O corpo de validação traz `message` como lista.
+O corpo de validação traz `message` como lista. `expiresAt` incompleto, como `2026-11-18T`, responde `400`:
+
+```json
+{
+  "statusCode": 400,
+  "message": [
+    "expiresAt deve ser uma data ISO 8601 completa, por exemplo 2026-11-18T23:59:59.000Z"
+  ],
+  "error": "Bad Request"
+}
+```
 
 ## Variáveis de ambiente
 

@@ -1,4 +1,5 @@
-import { IsEmail, IsString, IsInt, IsDateString, IsNotEmpty, IsOptional, Max, MaxLength, Min } from 'class-validator';
+import { IsEmail, IsString, IsInt, IsNotEmpty, IsOptional, Max, MaxLength, Min } from 'class-validator';
+import { IsVipExpiresAt } from '../is-vip-expires-at';
 
 export class CreateVipUserDto {
   @IsOptional()
@@ -20,6 +21,6 @@ export class CreateVipUserDto {
   @Max(1000)
   bonusTickets: number;
 
-  @IsDateString()
+  @IsVipExpiresAt()
   expiresAt: string;
 }

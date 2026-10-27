@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RemoveVipIntegrationDto } from './dto/remove-vip-integration.dto';
 import { UpsertVipIntegrationDto } from './dto/upsert-vip-integration.dto';
 import { VipWebhookDto } from './dto/vip-webhook.dto';
+import { parseExpiresAt } from './is-vip-expires-at';
 
 const DEFAULT_BONUS_TICKETS = 5;
 
@@ -104,7 +105,7 @@ export class VipIntegrationService {
       expiresAt:
         dto.expiresAt !== undefined
           ? dto.expiresAt
-            ? new Date(dto.expiresAt)
+            ? parseExpiresAt(dto.expiresAt)
             : null
           : existing?.expiresAt ?? null,
       email:

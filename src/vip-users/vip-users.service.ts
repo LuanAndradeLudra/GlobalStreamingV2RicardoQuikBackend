@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VipUser, ConnectedPlatform } from '@prisma/client';
 import { CreateVipUserDto } from './dto/create-vip-user.dto';
 import { UpdateVipUserDto } from './dto/update-vip-user.dto';
+import { parseExpiresAt } from './is-vip-expires-at';
 
 @Injectable()
 export class VipUsersService {
@@ -26,7 +27,7 @@ export class VipUsersService {
       platformUsername,
       usernameKey,
       bonusTickets: dto.bonusTickets,
-      expiresAt: new Date(dto.expiresAt),
+      expiresAt: parseExpiresAt(dto.expiresAt),
       ...(dto.email !== undefined && { email: dto.email?.trim().toLowerCase() || null }),
       ...(dto.name !== undefined && { displayName: dto.name?.trim() || null }),
     };
@@ -55,7 +56,7 @@ export class VipUsersService {
       where: { id },
       data: {
         ...(dto.bonusTickets !== undefined && { bonusTickets: dto.bonusTickets }),
-        ...(dto.expiresAt !== undefined && { expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null }),
+        ...(dto.expiresAt !== undefined && { expiresAt: dto.expiresAt ? parseExpiresAt(dto.expiresAt) : null }),
         ...(dto.email !== undefined && { email: dto.email?.trim().toLowerCase() || null }),
         ...(dto.name !== undefined && { displayName: dto.name?.trim() || null }),
       },

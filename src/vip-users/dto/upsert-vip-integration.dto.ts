@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  IsDateString,
   IsEmail,
   IsInt,
   IsNotEmpty,
@@ -11,6 +10,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { IsVipExpiresAt } from '../is-vip-expires-at';
 
 export class UpsertVipIntegrationDto {
   @ApiPropertyOptional({ example: 'fulano@email.com' })
@@ -53,6 +53,6 @@ export class UpsertVipIntegrationDto {
     example: '2026-12-31T23:59:59.000Z',
   })
   @IsOptional()
-  @IsDateString()
+  @IsVipExpiresAt()
   expiresAt?: string | null;
 }
