@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConnectedPlatform, Prisma, VipSource, VipUser } from '@prisma/client';
+import { plainToInstance } from 'class-transformer';
+import { validate, ValidationError } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RemoveVipIntegrationDto } from './dto/remove-vip-integration.dto';
 import { UpsertVipIntegrationDto } from './dto/upsert-vip-integration.dto';
@@ -21,6 +23,12 @@ export interface VipIntegrationView {
 }
 
 type Db = PrismaService | Prisma.TransactionClient;
+
+export interface VipSyncItemError {
+  index: number;
+  field: string;
+  message: string;
+}
 
 @Injectable()
 export class VipIntegrationService {
@@ -47,12 +55,13 @@ export class VipIntegrationService {
 
   async sync(
     userId: string,
-    vips: UpsertVipIntegrationDto[],
+    vips: unknown[],
   ): Promise<{ synced: number; removed: number }> {
+    const items = await this.parseSyncItems(vips);
     return this.prisma.$transaction(
       async (tx) => {
         const keptIds: string[] = [];
-        for (const dto of vips) {
+        for (const dto of items) {
           const saved = await this.upsertRecord(tx, userId, dto);
           keptIds.push(saved.id);
         }
@@ -66,7 +75,7 @@ export class VipIntegrationService {
           },
         });
 
-        return { synced: vips.length, removed: removed.count };
+        return { synced: items.length, removed: removed.count };
       },
       { timeout: 30000 },
     );
@@ -87,6 +96,54 @@ export class VipIntegrationService {
 
     const vip = await this.upsert(userId, dto.data);
     return { ok: true, event: dto.event, vip };
+  }
+
+  private async parseSyncItems(vips: unknown[]): Promise<UpsertVipIntegrationDto[]> {
+    const items: UpsertVipIntegrationDto[] = [];
+    const errors: VipSyncItemError[] = [];
+
+    for (let index = 0; index < vips.length; index++) {
+      const raw = vips[index];
+      if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+        errors.push({ index, field: 'vips', message: 'Cada item da lista deve ser um objeto' });
+        continue;
+      }
+
+      const dto = plainToInstance(UpsertVipIntegrationDto, raw);
+      const itemErrors = await validate(dto, { whitelist: true, forbidNonWhitelisted: true });
+      if (itemErrors.length > 0) {
+        errors.push(...this.flattenItemErrors(index, itemErrors));
+        continue;
+      }
+      items.push(dto);
+    }
+
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        message: 'A lista não foi aplicada. Nenhum VIP foi alterado.',
+        items: errors,
+      });
+    }
+
+    return items;
+  }
+
+  private flattenItemErrors(
+    index: number,
+    errors: ValidationError[],
+    prefix = '',
+  ): VipSyncItemError[] {
+    const result: VipSyncItemError[] = [];
+    for (const error of errors) {
+      const field = prefix ? `${prefix}.${error.property}` : error.property;
+      for (const message of Object.values(error.constraints ?? {})) {
+        result.push({ index, field, message });
+      }
+      if (error.children?.length) {
+        result.push(...this.flattenItemErrors(index, error.children, field));
+      }
+    }
+    return result;
   }
 
   private async upsertRecord(

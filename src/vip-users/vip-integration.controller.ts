@@ -54,7 +54,7 @@ export class VipIntegrationController {
   @ApiOperation({
     summary: 'Substitui os VIPs da integração pela lista enviada',
     description:
-      'Útil para reconciliação. VIPs criados no painel (source MANUAL) não entram nessa limpeza, a menos que o mesmo nick seja enviado na lista.',
+      'Se um item for inválido, nada é gravado e a resposta traz o índice. VIPs criados no painel (source MANUAL) não entram nessa limpeza, a menos que o mesmo nick seja enviado na lista.',
   })
   async sync(@CurrentUser() user: User, @Body() dto: SyncVipsIntegrationDto) {
     return this.vipIntegrationService.sync(user.id, dto.vips);
