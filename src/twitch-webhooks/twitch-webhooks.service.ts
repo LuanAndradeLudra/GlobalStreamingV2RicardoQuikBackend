@@ -503,7 +503,8 @@ export class TwitchWebhooksService {
         }
       }
 
-      // ✅ Verifica e adiciona entrada por VIP (se o usuário for VIP ativo)
+      // Card VIP só entra quando o sorteio permite o bônus. Sem isso, a pessoa entra só pela role.
+      if (activeGiveaway.applyVipBonus !== false) {
       const isDuplicateVip = await this.redisService.checkDuplicate(
         activeGiveaway.streamGiveawayId,
         ConnectedPlatform.TWITCH,
@@ -562,6 +563,7 @@ export class TwitchWebhooksService {
 
           entriesAdded.push(`VIP (${vipUser.bonusTickets} tickets)`);
         }
+      }
       }
 
       // Log consolidado: userId e entradas adicionadas

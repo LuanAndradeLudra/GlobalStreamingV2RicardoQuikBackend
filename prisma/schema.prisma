@@ -208,6 +208,9 @@ model StreamGiveaway {
   // filtros de elegibilidade (wizard step 2)
   allowedRoles Json // Array<string> das roles permitidas (ex.: ["NON_SUB","TWITCH_TIER_1",...])
 
+  // false: o participante entra só pela role. O card VIP, com tickets extras, não é criado.
+  applyVipBonus Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

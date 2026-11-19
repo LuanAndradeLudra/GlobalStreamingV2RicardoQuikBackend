@@ -11,6 +11,7 @@ export interface ActiveGiveawayData {
   keyword: string;
   platforms: ConnectedPlatform[];
   allowedRoles: string[];
+  applyVipBonus?: boolean;
   channelIds: Record<ConnectedPlatform, string>; // Map de platform -> externalChannelId
   donationConfigs: Array<{
     platform: ConnectedPlatform;
@@ -67,7 +68,7 @@ export class StreamGiveawayRedisService {
    * Cria chaves para cada plataforma configurada usando channelId
    */
   async publishActiveGiveaway(data: ActiveGiveawayData): Promise<void> {
-    const { streamGiveawayId, userId, keyword, platforms, allowedRoles, donationConfigs, channelIds } = data;
+    const { streamGiveawayId, userId, keyword, platforms, allowedRoles, applyVipBonus, donationConfigs, channelIds } = data;
 
     // Normaliza keyword (lowercase, trim)
     const normalizedKeyword = keyword.toLowerCase().trim();
@@ -89,6 +90,7 @@ export class StreamGiveawayRedisService {
         keyword: normalizedKeyword,
         platform,
         allowedRoles,
+        applyVipBonus: applyVipBonus !== false,
         channelId,
         donationConfigs: donationConfigs.filter(c => c.platform === platform),
       });

@@ -81,6 +81,16 @@ export class CreateGiveawayDto {
   @IsString({ each: true })
   allowedRoles?: string[];
 
+  @ApiProperty({
+    description: 'When false, VIP users join only through their role. The extra VIP ticket card is not created.',
+    example: true,
+    required: false,
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  applyVipBonus?: boolean;
+
   // Step 3: Ticket rule overrides
   @ApiProperty({
     description: 'Optional ticket rule overrides for this stream giveaway',

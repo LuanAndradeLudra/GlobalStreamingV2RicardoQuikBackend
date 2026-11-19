@@ -353,6 +353,7 @@ export class GiveawayService {
           platforms: dto.platforms,
           keyword: dto.keyword,
           allowedRoles,
+          applyVipBonus: dto.applyVipBonus !== false,
         },
       });
 
@@ -590,6 +591,7 @@ export class GiveawayService {
           ...(dto.status !== undefined && { status: dto.status }),
           ...(dto.platforms !== undefined && { platforms: dto.platforms }),
           ...(dto.keyword !== undefined && { keyword: dto.keyword }),
+          ...(dto.applyVipBonus !== undefined && { applyVipBonus: dto.applyVipBonus }),
           ...(allowedRoles !== undefined && { allowedRoles }),
         },
       });
@@ -1505,6 +1507,7 @@ export class GiveawayService {
       keyword: giveaway.keyword,
       platforms,
       allowedRoles: giveaway.allowedRoles as string[],
+      applyVipBonus: giveaway.applyVipBonus !== false,
       channelIds,
       donationConfigs: giveaway.donationConfigs?.map((config: any) => ({
         platform: config.platform,
