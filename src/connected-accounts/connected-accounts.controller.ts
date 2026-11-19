@@ -169,7 +169,7 @@ export class ConnectedAccountsController {
       this.youtubeChatService.stopChatPolling(account.externalChannelId);
     }
     if (account?.platform === ConnectedPlatform.TIKTOK) {
-      this.tiktokChatService.stopChatPolling(account.externalChannelId);
+      this.tiktokChatService.stopChatPolling(account.externalChannelId, 'account removed');
     }
   }
 
@@ -1368,7 +1368,7 @@ export class ConnectedAccountsController {
     const accounts = await this.connectedAccountsService.findAll(user.id);
     const previous = accounts.find((account) => account.platform === ConnectedPlatform.TIKTOK);
     if (previous && previous.externalChannelId !== uniqueId) {
-      this.tiktokChatService.stopChatPolling(previous.externalChannelId);
+      this.tiktokChatService.stopChatPolling(previous.externalChannelId, 'account replaced');
       await this.connectedAccountsService.remove(user.id, previous.id);
     }
 

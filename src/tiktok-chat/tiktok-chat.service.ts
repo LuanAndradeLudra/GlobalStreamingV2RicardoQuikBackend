@@ -60,6 +60,7 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
   private readonly instanceId = randomUUID();
   private readonly workers = new Map<string, TikTokWorker>();
   private readonly stopTimers = new Map<string, NodeJS.Timeout>();
+  private readonly syncGeneration = new Map<string, number>();
   private openedSub?: Subscription;
   private closedSub?: Subscription;
 
@@ -81,8 +82,8 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
     });
     this.closedSub = this.streamChatBus.onClosed((event) => {
       if (event.immediate) {
-        this.stopUser(event.userId).catch((error) => {
-          this.logger.error(`❌ [TikTok] Failed to stop chat for user ${event.userId}:`, error);
+        this.stopUser(event.userId, 'giveaway closed').catch((error) => {
+          this.logger.error(`❌ [TikTok] Failed to stop chat for user ${event.userId}: ${this.errorMessage(error)}`);
         });
         return;
       }
@@ -103,25 +104,37 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
       this.cancelScheduledStop(userId);
     }
     for (const uniqueId of [...this.workers.keys()]) {
-      this.stopChatPolling(uniqueId);
+      this.stopChatPolling(uniqueId, 'shutdown');
     }
   }
 
   async syncUser(userId: string): Promise<void> {
+    const generation = this.bumpGeneration(userId);
     this.cancelScheduledStop(userId);
 
     const openGiveaway = await this.prisma.streamGiveaway.findFirst({
       where: { userId, status: 'OPEN' },
     });
+    if (!this.isCurrentGeneration(userId, generation)) {
+      return;
+    }
+
     const platforms = (openGiveaway?.platforms as ConnectedPlatform[]) || [];
     if (!openGiveaway || !platforms.includes(ConnectedPlatform.TIKTOK)) {
-      await this.stopUser(userId);
+      await this.stopUserIfCurrent(
+        userId,
+        generation,
+        `TikTok is not in the open giveaway (platforms: ${platforms.join(',') || 'none'})`,
+      );
       return;
     }
 
     const account = await this.prisma.connectedAccount.findFirst({
       where: { userId, platform: ConnectedPlatform.TIKTOK },
     });
+    if (!this.isCurrentGeneration(userId, generation)) {
+      return;
+    }
     if (!account) {
       this.logger.warn(`⚠️ [TikTok] No TikTok account linked for user ${userId}`);
       return;
@@ -130,13 +143,21 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
     this.startChatPolling(account.externalChannelId);
   }
 
-  async stopUser(userId: string): Promise<void> {
+  async stopUser(userId: string, reason = 'giveaway closed'): Promise<void> {
+    const generation = this.bumpGeneration(userId);
+    await this.stopUserIfCurrent(userId, generation, reason);
+  }
+
+  private async stopUserIfCurrent(userId: string, generation: number, reason: string): Promise<void> {
     this.cancelScheduledStop(userId);
     const account = await this.prisma.connectedAccount.findFirst({
       where: { userId, platform: ConnectedPlatform.TIKTOK },
     });
+    if (!this.isCurrentGeneration(userId, generation)) {
+      return;
+    }
     if (account) {
-      this.stopChatPolling(account.externalChannelId);
+      this.stopChatPolling(account.externalChannelId, reason);
     }
   }
 
@@ -156,19 +177,18 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
     this.workers.set(normalized, worker);
     this.logger.log(`🔄 [TikTok] Starting live chat for @${normalized}`);
     this.run(worker).catch((error) => {
-      this.logger.error(`❌ [TikTok] Fatal error in chat loop for @${normalized}:`, error);
-      this.stopChatPolling(normalized);
+      this.logger.error(`❌ [TikTok] Chat loop crashed for @${normalized}: ${this.errorMessage(error)}`);
     });
   }
 
-  stopChatPolling(uniqueId: string): void {
+  stopChatPolling(uniqueId: string, reason = 'stopped'): void {
     const normalized = uniqueId.toLowerCase();
     const worker = this.workers.get(normalized);
     if (!worker) {
       return;
     }
 
-    this.logger.log(`🛑 [TikTok] Stopping live chat for @${normalized}`);
+    this.logger.log(`🛑 [TikTok] Stopping live chat for @${normalized} (${reason})`);
     worker.stopped = true;
     worker.wake?.();
     const connection = worker.connection;
@@ -210,8 +230,10 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
     this.cancelScheduledStop(userId);
     const timer = setTimeout(() => {
       this.stopTimers.delete(userId);
-      this.stopUser(userId).catch((error) => {
-        this.logger.error(`❌ [TikTok] Failed to stop chat after winner window for user ${userId}:`, error);
+      this.stopUser(userId, 'winner window ended').catch((error) => {
+        this.logger.error(
+          `❌ [TikTok] Failed to stop chat after winner window for user ${userId}: ${this.errorMessage(error)}`,
+        );
       });
     }, WINNER_GRACE_MS);
     this.stopTimers.set(userId, timer);
@@ -245,21 +267,24 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
       WebcastEvent: { CHAT: string; STREAM_END: string };
       ControlEvent: { DISCONNECTED: string };
     }>;
-    const { TikTokLiveConnection, WebcastEvent, ControlEvent } = await loadConnector();
 
     while (!worker.stopped) {
-      const locked = await this.acquireLock(worker.uniqueId);
-      if (!locked) {
-        await this.sleep(worker, 20_000);
-        continue;
-      }
-
-      const renew = setInterval(() => {
-        this.acquireLock(worker.uniqueId).catch(() => undefined);
-      }, 20_000);
-
+      let renew: NodeJS.Timeout | undefined;
       let connection: LiveConnection | null = null;
+      let retry = true;
       try {
+        const { TikTokLiveConnection, WebcastEvent, ControlEvent } = await loadConnector();
+        const locked = await this.acquireLock(worker.uniqueId);
+        if (!locked) {
+          retry = false;
+          await this.sleep(worker, 20_000);
+          continue;
+        }
+
+        renew = setInterval(() => {
+          this.acquireLock(worker.uniqueId).catch(() => undefined);
+        }, 20_000);
+
         const signApiKey = this.configService.get<string>('TIKTOK_EULER_API_KEY');
         connection = new TikTokLiveConnection(worker.uniqueId, {
           processInitialData: false,
@@ -271,7 +296,7 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
 
         connection.on(WebcastEvent.CHAT, (message) => {
           this.processChatMessage(worker.uniqueId, message as TikTokChatMessage).catch((error) => {
-            this.logger.error(`❌ [TikTok] Error processing chat message:`, error);
+            this.logger.error(`❌ [TikTok] Error processing chat message: ${this.errorMessage(error)}`);
           });
         });
         connection.on(WebcastEvent.STREAM_END, () => {
@@ -288,22 +313,24 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
         await disconnected;
         this.logger.log(`🔌 [TikTok] Disconnected from @${worker.uniqueId}`);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = this.errorMessage(error);
         if (!worker.loggedOffline) {
-          this.logger.warn(`⏳ [TikTok] @${worker.uniqueId} is not live yet (${message}). Retrying every 30s.`);
+          this.logger.warn(`⏳ [TikTok] @${worker.uniqueId} chat failed: ${message}. Retrying in 30s.`);
           worker.loggedOffline = true;
         } else {
-          this.logger.debug(`⏳ [TikTok] Still waiting for @${worker.uniqueId} to go live: ${message}`);
+          this.logger.debug(`⏳ [TikTok] Still retrying @${worker.uniqueId}: ${message}`);
         }
       } finally {
-        clearInterval(renew);
+        if (renew) {
+          clearInterval(renew);
+        }
         worker.connection = null;
         if (connection) {
           await connection.disconnect().catch(() => undefined);
         }
       }
 
-      if (!worker.stopped) {
+      if (retry && !worker.stopped) {
         await this.sleep(worker, OFFLINE_RETRY_MS);
       }
     }
@@ -426,6 +453,20 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.logger.log(`✅ [TikTok] Participant added: ${username} with ${ticketInfo.totalTickets} tickets (${method})`);
+  }
+
+  private bumpGeneration(userId: string): number {
+    const next = (this.syncGeneration.get(userId) ?? 0) + 1;
+    this.syncGeneration.set(userId, next);
+    return next;
+  }
+
+  private isCurrentGeneration(userId: string, generation: number): boolean {
+    return this.syncGeneration.get(userId) === generation;
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   private async acquireLock(uniqueId: string): Promise<boolean> {
