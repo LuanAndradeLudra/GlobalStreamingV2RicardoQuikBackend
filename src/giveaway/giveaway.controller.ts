@@ -40,7 +40,7 @@ export class GiveawayController {
     description:
       'Creates a new giveaway for the authenticated admin user. ' +
       'Only one giveaway can be OPEN at a time per admin. Returns error 400 if trying to create OPEN when another already exists. ' +
-      'Platforms must be stream platforms only (TWITCH, KICK, YOUTUBE). ' +
+      'Platforms must be stream platforms only (TWITCH, KICK, YOUTUBE, TIKTOK). ' +
       'Keyword is required for all giveaways. ' +
       'Use subsOnly or nonSubsOnly shortcuts, or provide allowedRoles array. ' +
       'Donation configs define which donation types are enabled per platform with their time windows.',
@@ -58,7 +58,7 @@ export class GiveawayController {
           status: { type: 'string', enum: ['DRAFT', 'OPEN', 'CLOSED'] },
           platforms: {
             type: 'array',
-            items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE'] },
+            items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'TIKTOK'] },
           },
           keyword: { type: 'string' },
           allowedRoles: {
@@ -178,7 +178,7 @@ export class GiveawayController {
           status: { type: 'string', enum: ['DRAFT', 'OPEN', 'CLOSED'] },
           platforms: {
             type: 'array',
-            items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE'] },
+            items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'TIKTOK'] },
           },
           keyword: { type: 'string' },
           allowedRoles: {
@@ -258,7 +258,7 @@ export class GiveawayController {
         status: { type: 'string', enum: ['DRAFT', 'OPEN', 'CLOSED'] },
         platforms: {
           type: 'array',
-          items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE'] },
+          items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'TIKTOK'] },
         },
         keyword: { type: 'string' },
         allowedRoles: {
@@ -327,6 +327,8 @@ export class GiveawayController {
                   'KICK_NON_SUB',
                   'YOUTUBE_SUB',
                   'YOUTUBE_NON_SUB',
+                  'TIKTOK_SUB',
+                  'TIKTOK_NON_SUB',
                 ],
               },
               tickets: { type: 'number' },
@@ -367,7 +369,7 @@ export class GiveawayController {
     description:
       'Updates a giveaway. Can update name, description, keyword, platforms, status, allowedRoles, donation configs, and overrides. ' +
       'Only one giveaway can be OPEN at a time per admin. Returns error 400 if trying to set OPEN when another already exists. ' +
-      'Platforms must be stream platforms only (TWITCH, KICK, YOUTUBE). ' +
+      'Platforms must be stream platforms only (TWITCH, KICK, YOUTUBE, TIKTOK). ' +
       'Keyword is required for all giveaways. ' +
       'Use subsOnly or nonSubsOnly shortcuts, or provide allowedRoles array.',
   })
@@ -384,7 +386,7 @@ export class GiveawayController {
         status: { type: 'string', enum: ['DRAFT', 'OPEN', 'CLOSED'] },
         platforms: {
           type: 'array',
-          items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE'] },
+          items: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'TIKTOK'] },
         },
         keyword: { type: 'string' },
         allowedRoles: {
@@ -501,11 +503,11 @@ export class GiveawayController {
       properties: {
         id: { type: 'string' },
         streamGiveawayId: { type: 'string' },
-        platform: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE'] },
+        platform: { type: 'string', enum: ['TWITCH', 'KICK', 'YOUTUBE', 'TIKTOK'] },
         externalUserId: { type: 'string' },
         username: { type: 'string' },
         avatarUrl: { type: 'string', nullable: true },
-        method: { type: 'string', enum: ['BITS', 'TWITCH_TIER_1', 'TWITCH_TIER_2', 'TWITCH_TIER_3', 'TWITCH_NON_SUB', 'KICK_SUB', 'KICK_NON_SUB', 'YOUTUBE_SUB', 'YOUTUBE_NON_SUB', 'GIFT_SUB', 'KICK_COINS', 'SUPERCHAT'] },
+        method: { type: 'string', enum: ['BITS', 'TWITCH_TIER_1', 'TWITCH_TIER_2', 'TWITCH_TIER_3', 'TWITCH_NON_SUB', 'KICK_SUB', 'KICK_NON_SUB', 'YOUTUBE_SUB', 'YOUTUBE_NON_SUB', 'TIKTOK_SUB', 'TIKTOK_NON_SUB', 'GIFT_SUB', 'KICK_COINS', 'SUPERCHAT'] },
         tickets: { type: 'number' },
         metadata: { type: 'object', nullable: true },
         createdAt: { type: 'string', format: 'date-time' },

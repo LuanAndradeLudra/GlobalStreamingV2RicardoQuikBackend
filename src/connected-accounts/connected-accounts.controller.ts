@@ -22,6 +22,8 @@ import { KickOAuthService } from './services/kick-oauth.service';
 import { TwitchOAuthService } from './services/twitch-oauth.service';
 import { YouTubeOAuthService } from './services/youtube-oauth.service';
 import { YouTubeChatService } from '../youtube-chat/youtube-chat.service';
+import { TikTokChatService } from '../tiktok-chat/tiktok-chat.service';
+import { ConnectTikTokDto } from './dto/connect-tiktok.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -38,6 +40,7 @@ export class ConnectedAccountsController {
     private readonly twitchOAuthService: TwitchOAuthService,
     private readonly youtubeOAuthService: YouTubeOAuthService,
     private readonly youtubeChatService: YouTubeChatService,
+    private readonly tiktokChatService: TikTokChatService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -159,7 +162,15 @@ export class ConnectedAccountsController {
     description: 'Connected account not found',
   })
   async remove(@CurrentUser() user: User, @Param('id') id: string): Promise<void> {
+    const accounts = await this.connectedAccountsService.findAll(user.id);
+    const account = accounts.find((item) => item.id === id);
     await this.connectedAccountsService.remove(user.id, id);
+    if (account?.platform === ConnectedPlatform.YOUTUBE) {
+      this.youtubeChatService.stopChatPolling(account.externalChannelId);
+    }
+    if (account?.platform === ConnectedPlatform.TIKTOK) {
+      this.tiktokChatService.stopChatPolling(account.externalChannelId);
+    }
   }
 
   @Get('oauth/kick/authorize')
@@ -1330,6 +1341,47 @@ export class ConnectedAccountsController {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       throw new BadRequestException(`Failed to refresh token: ${errorMessage}`);
     }
+  }
+
+  @Post('tiktok')
+  @UseGuards(JwtAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('JWT-auth')
+  @ApiTags('connected-accounts-tiktok')
+  @ApiOperation({
+    summary: 'Link a TikTok channel for live giveaways',
+    description:
+      'Stores the TikTok username used to read live chat while a giveaway is OPEN. ' +
+      'TikTok has no official live-chat API, so the backend connects to the public webcast of this username.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'TikTok channel linked',
+  })
+  async connectTikTok(
+    @CurrentUser() user: User,
+    @Body() dto: ConnectTikTokDto,
+  ): Promise<ConnectedAccount> {
+    const username = dto.username.trim().replace(/^@/, '');
+    const uniqueId = username.toLowerCase();
+
+    const accounts = await this.connectedAccountsService.findAll(user.id);
+    const previous = accounts.find((account) => account.platform === ConnectedPlatform.TIKTOK);
+    if (previous && previous.externalChannelId !== uniqueId) {
+      this.tiktokChatService.stopChatPolling(previous.externalChannelId);
+      await this.connectedAccountsService.remove(user.id, previous.id);
+    }
+
+    const account = await this.connectedAccountsService.createOrUpdate(user.id, {
+      platform: ConnectedPlatform.TIKTOK,
+      externalChannelId: uniqueId,
+      displayName: username,
+      accessToken: 'webcast',
+      scopes: 'webcast.chat.read',
+    });
+
+    await this.tiktokChatService.syncUser(user.id);
+    return account;
   }
 }
 

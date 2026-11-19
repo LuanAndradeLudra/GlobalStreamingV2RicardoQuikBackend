@@ -50,6 +50,8 @@ enum EntryMethod {
   KICK_NON_SUB
   YOUTUBE_SUB
   YOUTUBE_NON_SUB
+  TIKTOK_SUB
+  TIKTOK_NON_SUB
   VIP
 }
 
@@ -200,7 +202,7 @@ model StreamGiveaway {
   name        String
   description String?
   status      StreamGiveawayStatus
-  platforms   Json // Array<ConnectedPlatform> (TWITCH/KICK/YOUTUBE)
+  platforms   Json // Array<ConnectedPlatform> (TWITCH/KICK/YOUTUBE/TIKTOK)
   keyword     String // OBRIGATÓRIA (STREAMS)
 
   // filtros de elegibilidade (wizard step 2)

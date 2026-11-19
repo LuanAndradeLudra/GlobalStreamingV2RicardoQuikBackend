@@ -14,6 +14,7 @@ import { CreateParticipantsBatchDto } from './dto/create-participants-batch.dto'
 import { DrawResponseDto } from './dto/draw-response.dto';
 import { SetGiftSubsLeaderboardDto } from './dto/set-gift-subs-leaderboard.dto';
 import { MonthlyWinLimitService } from '../monthly-win-limit/monthly-win-limit.service';
+import { StreamChatBus } from '../stream-chat/stream-chat-bus.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -24,11 +25,12 @@ export class GiveawayService {
     private readonly redisService: StreamGiveawayRedisService,
     private readonly realtimeGateway: RealtimeGateway,
     private readonly monthlyWinLimitService: MonthlyWinLimitService,
+    private readonly streamChatBus: StreamChatBus,
   ) {}
 
   /**
    * Get the universe of valid roles for given platforms.
-   * NON_SUB is now platform-specific: TWITCH_NON_SUB, KICK_NON_SUB, YOUTUBE_NON_SUB.
+   * NON_SUB is now platform-specific: TWITCH_NON_SUB, KICK_NON_SUB, YOUTUBE_NON_SUB, TIKTOK_NON_SUB.
    * Adds platform-specific subscription roles based on platforms.
    */
   getRoleUniverseForPlatforms(platforms: ConnectedPlatform[]): string[] {
@@ -43,6 +45,9 @@ export class GiveawayService {
     }
     if (platforms.includes(ConnectedPlatform.YOUTUBE)) {
       roles.push('YOUTUBE_NON_SUB', 'YOUTUBE_SUB');
+    }
+    if (platforms.includes(ConnectedPlatform.TIKTOK)) {
+      roles.push('TIKTOK_NON_SUB', 'TIKTOK_SUB');
     }
 
     return roles;
@@ -76,6 +81,9 @@ export class GiveawayService {
       if (platforms.includes(ConnectedPlatform.YOUTUBE)) {
         roles.push('YOUTUBE_NON_SUB');
       }
+      if (platforms.includes(ConnectedPlatform.TIKTOK)) {
+        roles.push('TIKTOK_NON_SUB');
+      }
       return roles;
     }
 
@@ -102,14 +110,19 @@ export class GiveawayService {
   }
 
   /**
-   * Validate platforms are stream platforms only (TWITCH, KICK, YOUTUBE).
+   * Validate platforms are stream platforms only (TWITCH, KICK, YOUTUBE, TIKTOK).
    */
   validatePlatforms(platforms: ConnectedPlatform[]): void {
-    const streamPlatforms: ConnectedPlatform[] = [ConnectedPlatform.TWITCH, ConnectedPlatform.KICK, ConnectedPlatform.YOUTUBE];
+    const streamPlatforms: ConnectedPlatform[] = [
+      ConnectedPlatform.TWITCH,
+      ConnectedPlatform.KICK,
+      ConnectedPlatform.YOUTUBE,
+      ConnectedPlatform.TIKTOK,
+    ];
     const invalidPlatforms = platforms.filter((p) => !streamPlatforms.includes(p));
     if (invalidPlatforms.length > 0) {
       throw new BadRequestException(
-        `Invalid platforms: ${invalidPlatforms.join(', ')}. Only stream platforms are allowed: TWITCH, KICK, YOUTUBE`,
+        `Invalid platforms: ${invalidPlatforms.join(', ')}. Only stream platforms are allowed: TWITCH, KICK, YOUTUBE, TIKTOK`,
       );
     }
   }
@@ -754,11 +767,13 @@ export class GiveawayService {
         keyword: updatedGiveaway.keyword,
         platforms: (updatedGiveaway.platforms as ConnectedPlatform[]).map(p => p.toString()),
       });
+    } else if (newStatus === StreamGiveawayStatus.OPEN && oldStatus === StreamGiveawayStatus.OPEN) {
+      this.streamChatBus.notifyOpened(updatedGiveaway.userId);
     }
 
     // Se mudou de OPEN para CLOSED/DONE, remove do Redis
     if (oldStatus === StreamGiveawayStatus.OPEN && newStatus !== StreamGiveawayStatus.OPEN) {
-      await this.removeGiveawayFromRedis(updatedGiveaway);
+      await this.removeGiveawayFromRedis(updatedGiveaway, true);
       
       this.realtimeGateway.emitGiveawayClosed({
         streamGiveawayId: updatedGiveaway.id,
@@ -889,7 +904,7 @@ export class GiveawayService {
 
     // Convert platform-specific NON_SUB (TWITCH_NON_SUB, KICK_NON_SUB, YOUTUBE_NON_SUB) to NON_SUB for database lookup
     let normalizedRole = input.role;
-    if (input.role === 'TWITCH_NON_SUB' || input.role === 'KICK_NON_SUB' || input.role === 'YOUTUBE_NON_SUB') {
+    if (input.role.endsWith('_NON_SUB')) {
       normalizedRole = 'NON_SUB';
     }
 
@@ -1001,7 +1016,7 @@ export class GiveawayService {
 
     // Remove from Redis before deleting from database
     // This ensures Redis is cleaned up even if the giveaway is deleted directly
-    await this.removeGiveawayFromRedis(streamGiveaway);
+    await this.removeGiveawayFromRedis(streamGiveaway, streamGiveaway.status === StreamGiveawayStatus.OPEN);
 
     // Delete the stream giveaway (cascade will handle related records)
     await this.prisma.streamGiveaway.delete({
@@ -1268,13 +1283,15 @@ export class GiveawayService {
 
     this.logger.log(`🏆 Winner saved to Redis: ${winnerParticipant.username} (${winnerParticipant.platform})`);
 
-    // If this is the first draw, change status from OPEN to DONE
+    // If this is the first draw, change status from OPEN to DONE.
+    // Keep YouTube/TikTok chat up for the winner-message window, then stop it.
     if (isFirstDraw) {
       await this.prisma.streamGiveaway.update({
         where: { id: streamGiveawayId },
         data: { status: 'DONE' as any },
       });
     }
+    this.streamChatBus.notifyClosed(streamGiveaway.userId, false);
 
     // Return audit payload
     return {
@@ -1497,13 +1514,14 @@ export class GiveawayService {
     });
 
     this.logger.log(`✅ Giveaway published to Redis: ${giveaway.id}`);
+    this.streamChatBus.notifyOpened(giveaway.userId);
   }
 
   /**
    * Remove sorteio ativo do Redis
    * Busca channelIds das connectedAccounts para cada plataforma
    */
-  private async removeGiveawayFromRedis(giveaway: any): Promise<void> {
+  private async removeGiveawayFromRedis(giveaway: any, stopChat: boolean): Promise<void> {
     this.logger.log(`📥 Removing giveaway from Redis: ${giveaway.id}`);
 
     const platforms = giveaway.platforms as ConnectedPlatform[];
@@ -1530,6 +1548,56 @@ export class GiveawayService {
     });
 
     this.logger.log(`✅ Giveaway removed from Redis: ${giveaway.id}`);
+    if (stopChat) {
+      this.streamChatBus.notifyClosed(giveaway.userId, true);
+    }
+  }
+
+  /**
+   * Store a chat line from the drawn winner while their Redis window is open.
+   * Used by YouTube and TikTok, which do not receive a platform webhook.
+   */
+  async recordWinnerChatMessage(input: {
+    platform: ConnectedPlatform;
+    channelId: string;
+    externalUserId: string;
+    text: string;
+  }): Promise<void> {
+    try {
+      const account = await this.prisma.connectedAccount.findFirst({
+        where: {
+          platform: input.platform,
+          externalChannelId: input.channelId,
+        },
+      });
+      if (!account) {
+        return;
+      }
+
+      const doneGiveaways = await this.prisma.streamGiveaway.findMany({
+        where: {
+          userId: account.userId,
+          status: 'DONE' as any,
+        },
+      });
+
+      for (const giveaway of doneGiveaways) {
+        const winner = await this.redisService.getWinner(giveaway.id);
+        if (
+          winner &&
+          winner.platform === input.platform &&
+          winner.externalUserId === input.externalUserId
+        ) {
+          await this.redisService.addWinnerMessage(giveaway.id, {
+            text: input.text,
+            timestamp: new Date().toISOString(),
+          });
+          this.logger.log(`💬 Winner message saved in giveaway ${giveaway.id}`);
+        }
+      }
+    } catch (error) {
+      this.logger.error('❌ Failed to record winner chat message:', error);
+    }
   }
 
   /**

@@ -56,6 +56,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Set a key only when it does not exist. Returns true when this caller acquired it.
+   */
+  async setNx(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+    const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
+    return result === 'OK';
+  }
+
+  /**
    * Get a value by key
    */
   async get(key: string): Promise<string | null> {

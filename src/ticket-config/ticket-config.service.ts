@@ -69,7 +69,7 @@ export class TicketConfigService {
       // Convert platform-specific NON_SUB (TWITCH_NON_SUB, KICK_NON_SUB, YOUTUBE_NON_SUB) to NON_SUB
       // The platform is already specified in rule.platform
       let normalizedRole = rule.role;
-      if (rule.role === 'TWITCH_NON_SUB' || rule.role === 'KICK_NON_SUB' || rule.role === 'YOUTUBE_NON_SUB') {
+      if (rule.role.endsWith('_NON_SUB')) {
         normalizedRole = 'NON_SUB';
       }
 

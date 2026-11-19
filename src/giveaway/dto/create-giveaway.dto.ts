@@ -34,7 +34,7 @@ export class CreateGiveawayDto {
   status?: 'DRAFT' | 'OPEN';
 
   @ApiProperty({
-    description: 'Platforms where the stream giveaway will run (stream platforms only: TWITCH, KICK, YOUTUBE)',
+    description: 'Platforms where the stream giveaway will run (stream platforms only: TWITCH, KICK, YOUTUBE, TIKTOK)',
     enum: ConnectedPlatform,
     isArray: true,
     example: [ConnectedPlatform.TWITCH, ConnectedPlatform.KICK],

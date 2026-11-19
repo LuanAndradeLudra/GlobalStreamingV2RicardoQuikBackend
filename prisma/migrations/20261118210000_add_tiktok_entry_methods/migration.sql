@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "EntryMethod" ADD VALUE 'TIKTOK_SUB';
+ALTER TYPE "EntryMethod" ADD VALUE 'TIKTOK_NON_SUB';

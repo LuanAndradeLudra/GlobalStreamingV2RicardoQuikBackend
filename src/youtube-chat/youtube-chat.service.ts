@@ -1,10 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 import { google } from 'googleapis';
+import { Subscription } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { GiveawayService } from '../giveaway/giveaway.service';
 import { StreamGiveawayRedisService } from '../stream-giveaway-redis/stream-giveaway-redis.service';
 import { RealtimeGateway } from '../realtime-gateway/realtime-gateway.gateway';
+import { RedisService } from '../redis/redis.service';
+import { StreamChatBus } from '../stream-chat/stream-chat-bus.service';
 import { ConnectedPlatform, EntryMethod } from '@prisma/client';
 
 interface LiveChatMessage {
@@ -58,10 +62,18 @@ interface ChatWorker {
   pollingIntervalMs: number;
 }
 
+const POLL_LOCK_TTL_SECONDS = 120;
+const OFFLINE_RETRY_MS = 60_000;
+const WINNER_GRACE_MS = 90_000;
+
 @Injectable()
-export class YouTubeChatService {
+export class YouTubeChatService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(YouTubeChatService.name);
+  private readonly instanceId = randomUUID();
   private readonly workers = new Map<string, ChatWorker>();
+  private readonly stopTimers = new Map<string, NodeJS.Timeout>();
+  private openedSub?: Subscription;
+  private closedSub?: Subscription;
 
   constructor(
     private readonly configService: ConfigService,
@@ -69,7 +81,78 @@ export class YouTubeChatService {
     private readonly giveawayService: GiveawayService,
     private readonly redisService: StreamGiveawayRedisService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly redis: RedisService,
+    private readonly streamChatBus: StreamChatBus,
   ) {}
+
+  onModuleInit(): void {
+    this.openedSub = this.streamChatBus.onOpened((userId) => {
+      this.syncUser(userId).catch((error) => {
+        this.logger.error(`❌ [YouTube] Failed to sync chat for user ${userId}:`, error);
+      });
+    });
+    this.closedSub = this.streamChatBus.onClosed((event) => {
+      if (event.immediate) {
+        this.stopUser(event.userId).catch((error) => {
+          this.logger.error(`❌ [YouTube] Failed to stop chat for user ${event.userId}:`, error);
+        });
+        return;
+      }
+      this.holdForWinner(event.userId).catch((error) => {
+        this.logger.error(`❌ [YouTube] Failed to hold chat for winner window of user ${event.userId}:`, error);
+      });
+    });
+
+    this.resumeOpenGiveaways().catch((error) => {
+      this.logger.error('❌ [YouTube] Failed to resume chat for open giveaways:', error);
+    });
+  }
+
+  onModuleDestroy(): void {
+    this.openedSub?.unsubscribe();
+    this.closedSub?.unsubscribe();
+    for (const userId of this.stopTimers.keys()) {
+      this.cancelScheduledStop(userId);
+    }
+    this.stopAllWorkers();
+  }
+
+  /**
+   * Start polling when this admin has an OPEN giveaway that includes YouTube.
+   * Stops polling when YouTube is no longer part of the open giveaway.
+   */
+  async syncUser(userId: string): Promise<void> {
+    this.cancelScheduledStop(userId);
+
+    const openGiveaway = await this.prisma.streamGiveaway.findFirst({
+      where: { userId, status: 'OPEN' },
+    });
+    const platforms = (openGiveaway?.platforms as ConnectedPlatform[]) || [];
+    if (!openGiveaway || !platforms.includes(ConnectedPlatform.YOUTUBE)) {
+      await this.stopUser(userId);
+      return;
+    }
+
+    const account = await this.prisma.connectedAccount.findFirst({
+      where: { userId, platform: ConnectedPlatform.YOUTUBE },
+    });
+    if (!account?.refreshToken) {
+      this.logger.warn(`⚠️ [YouTube] No YouTube account with refresh token for user ${userId}`);
+      return;
+    }
+
+    await this.startChatPolling(account.externalChannelId, account.accessToken, account.refreshToken);
+  }
+
+  async stopUser(userId: string): Promise<void> {
+    this.cancelScheduledStop(userId);
+    const account = await this.prisma.connectedAccount.findFirst({
+      where: { userId, platform: ConnectedPlatform.YOUTUBE },
+    });
+    if (account) {
+      this.stopChatPolling(account.externalChannelId);
+    }
+  }
 
   /**
    * Get liveChatId for a channel's active live stream
@@ -153,14 +236,10 @@ export class YouTubeChatService {
 
     // Refresh token if needed
     oauth2Client.on('tokens', (tokens) => {
-      if (tokens.refresh_token) {
-        // Update refresh token in database
-        this.updateRefreshToken(channelId, tokens.refresh_token).catch((err) => {
-          this.logger.error(`❌ [YouTube] Failed to update refresh token:`, err);
-        });
-      }
+      this.persistTokens(channelId, tokens).catch((err) => {
+        this.logger.error(`❌ [YouTube] Failed to persist refreshed tokens:`, err);
+      });
       if (tokens.access_token) {
-        // Update access token in worker
         const worker = this.workers.get(channelId);
         if (worker) {
           oauth2Client.setCredentials({ access_token: tokens.access_token });
@@ -191,7 +270,7 @@ export class YouTubeChatService {
       intervalId: null,
       lastPageToken: undefined,
       isRunning: false,
-      pollingIntervalMs: 10000, // Fixed 10 seconds interval
+      pollingIntervalMs: 10000,
     };
 
     this.workers.set(channelId, worker);
@@ -214,33 +293,40 @@ export class YouTubeChatService {
     worker.isRunning = true;
 
     const poll = async () => {
+      if (!worker.isRunning) {
+        return;
+      }
+
       try {
-        // If no liveChatId, try to get it
+        const locked = await this.acquirePollLock(worker.channelId);
+        if (!locked) {
+          worker.intervalId = setTimeout(poll, 20_000);
+          return;
+        }
+
         if (!worker.liveChatId) {
           this.logger.log(`🔍 [YouTube] No liveChatId found, attempting to get it for channel ${worker.channelId}`);
           try {
-            // Refresh token if needed before making the API call
             const tokenResponse = await worker.oauth2Client.getAccessToken();
             if (!tokenResponse.token) {
               throw new Error('Failed to get access token');
             }
-            
+
             worker.liveChatId = await this.getLiveChatId(worker.oauth2Client, worker.channelId);
             if (!worker.liveChatId) {
-              // Retry in 30 seconds if no live stream
-              this.logger.warn(`⏳ [YouTube] No active live stream found, retrying in 30 seconds...`);
-              worker.intervalId = setTimeout(poll, 30000);
+              this.logger.warn(`⏳ [YouTube] No active live stream found, retrying in 60 seconds...`);
+              worker.intervalId = setTimeout(poll, OFFLINE_RETRY_MS);
               return;
             }
+            worker.lastPageToken = undefined;
             this.logger.log(`✅ [YouTube] Found liveChatId: ${worker.liveChatId}`);
           } catch (error: any) {
             this.logger.error(`❌ [YouTube] Error getting liveChatId:`, error);
-            worker.intervalId = setTimeout(poll, 30000);
+            worker.intervalId = setTimeout(poll, OFFLINE_RETRY_MS);
             return;
           }
         }
 
-        // Poll for messages
         const tokenResponse = await worker.oauth2Client.getAccessToken();
         const accessToken = tokenResponse.token;
         if (!accessToken) {
@@ -248,8 +334,6 @@ export class YouTubeChatService {
         }
         worker.oauth2Client.setCredentials({ access_token: accessToken });
         worker.youtubeClient = google.youtube({ version: 'v3', auth: worker.oauth2Client });
-
-        this.logger.debug(`🔄 [YouTube] Polling chat for channel ${worker.channelId}, liveChatId: ${worker.liveChatId}, pageToken: ${worker.lastPageToken || 'none'}`);
 
         const response = await worker.youtubeClient.liveChatMessages.list({
           liveChatId: worker.liveChatId,
@@ -259,39 +343,43 @@ export class YouTubeChatService {
         });
 
         const messages = (response.data.items || []) as LiveChatMessage[];
-        const pollingIntervalMs = 10000; // Fixed 10 seconds interval
+        const pollingIntervalMs = Math.max(Number(response.data.pollingIntervalMillis) || 10000, 5000);
         worker.pollingIntervalMs = pollingIntervalMs;
         worker.lastPageToken = response.data.nextPageToken;
 
-        this.logger.log(`📥 [YouTube] Received ${messages.length} messages for channel ${worker.channelId} (polling interval: ${pollingIntervalMs}ms)`);
-        
         if (messages.length > 0) {
-          this.logger.debug(`📋 [YouTube] Message IDs: ${messages.map(m => m.id).join(', ')}`);
+          this.logger.log(`📥 [YouTube] Received ${messages.length} messages for channel ${worker.channelId}`);
         }
 
-        // Process messages
         for (const message of messages) {
           await this.processChatMessage(worker.channelId, message);
         }
 
-        // Schedule next poll
         worker.intervalId = setTimeout(poll, pollingIntervalMs);
       } catch (error: any) {
         this.logger.error(`❌ [YouTube] Error polling chat for channel ${worker.channelId}:`, error);
 
-        // Handle rate limit
-        if (error.code === 403 && error.message?.includes('quota')) {
+        if (this.isLiveChatGone(error)) {
+          this.logger.warn(`⏳ [YouTube] Live chat ended for channel ${worker.channelId}, looking for the next stream`);
+          worker.liveChatId = null;
+          worker.lastPageToken = undefined;
+          worker.intervalId = setTimeout(poll, OFFLINE_RETRY_MS);
+          return;
+        }
+
+        const reason = error?.errors?.[0]?.reason || error?.response?.data?.error?.errors?.[0]?.reason;
+        if (error.code === 403 && (reason === 'quotaExceeded' || error.message?.includes('quota'))) {
           this.logger.warn(`⚠️ [YouTube] Quota exceeded, backing off for 60 seconds`);
           worker.intervalId = setTimeout(poll, 60000);
           return;
         }
 
-        // Handle token refresh
         if (error.code === 401) {
           this.logger.log(`🔄 [YouTube] Token expired, refreshing...`);
           try {
             const { credentials } = await worker.oauth2Client.refreshAccessToken();
             worker.oauth2Client.setCredentials(credentials);
+            await this.persistTokens(worker.channelId, credentials);
             worker.intervalId = setTimeout(poll, 5000);
             return;
           } catch (refreshError) {
@@ -301,8 +389,7 @@ export class YouTubeChatService {
           }
         }
 
-        // Retry after error
-        worker.intervalId = setTimeout(poll, 10000);
+        worker.intervalId = setTimeout(poll, worker.pollingIntervalMs || 10000);
       }
     };
 
@@ -329,6 +416,7 @@ export class YouTubeChatService {
 
     worker.isRunning = false;
     this.workers.delete(channelId);
+    this.releasePollLock(channelId).catch(() => undefined);
   }
 
   /**
@@ -348,7 +436,12 @@ export class YouTubeChatService {
         return;
       }
 
-      this.logger.log(`💬 [YouTube] ${username} (${userId}): ${messageText}`);
+      await this.giveawayService.recordWinnerChatMessage({
+        platform: ConnectedPlatform.YOUTUBE,
+        channelId,
+        externalUserId: userId,
+        text: messageText,
+      });
 
       // 1️⃣ Find connected account to get admin userId
       const connectedAccount = await this.prisma.connectedAccount.findFirst({
@@ -397,9 +490,10 @@ export class YouTubeChatService {
       const isSubscriberFromPayload = message.authorDetails.isSubscriber === true;
       const subscriberMonthDuration = message.authorDetails.subscriberMonthDuration || 0;
       
-      // Only treat as subscriber if explicitly marked as owner (they're always subscribed to themselves)
-      // or if isSubscriber is explicitly true (rarely present)
-      const isSubscriber = isChatOwner || isSubscriberFromPayload;
+      // Membership (isChatSponsor) is the paid equivalent of a sub. The free
+      // subscriber flag is often absent from live chat payloads. The channel
+      // owner is treated as a subscriber so the streamer can test the keyword.
+      const isSubscriber = isChatOwner || isChatSponsor || isSubscriberFromPayload;
       
       // Determine role and method - for now, treat all as NON_SUB except channel owners
       // This is because YouTube API doesn't reliably provide subscription info
@@ -420,7 +514,7 @@ export class YouTubeChatService {
       
       // Log additional info for debugging
       if (isChatSponsor) {
-        this.logger.debug(`ℹ️ [YouTube] User ${username} is a channel member (sponsor) - note: this is different from subscriber`);
+        this.logger.debug(`✅ [YouTube] User ${username} is a channel member (treated as subscriber)`);
       }
       
       // Log what we received from the API for debugging
@@ -429,8 +523,7 @@ export class YouTubeChatService {
       // 4️⃣ Check if role is allowed in this giveaway
       if (!activeGiveaway.allowedRoles.includes(role)) {
         this.logger.debug(`⚠️ [YouTube] Role ${role} not allowed in giveaway ${activeGiveaway.streamGiveawayId}`);
-        return;
-      }
+      } else {
 
       // 5️⃣ Deduplication check - verify if user already participated with this method
       const isDuplicate = await this.redisService.checkDuplicate(
@@ -509,28 +602,120 @@ export class YouTubeChatService {
           avatarUrl: participant.avatarUrl || undefined,
         },
       });
+      }
     } catch (error) {
       this.logger.error(`❌ [YouTube] Error processing chat message:`, error);
     }
   }
 
-  /**
-   * Update refresh token in database
-   */
-  private async updateRefreshToken(channelId: string, refreshToken: string): Promise<void> {
-    try {
-      await this.prisma.connectedAccount.updateMany({
-        where: {
-          platform: ConnectedPlatform.YOUTUBE,
-          externalChannelId: channelId,
-        },
-        data: {
-          refreshToken,
-        },
-      });
-    } catch (error) {
-      this.logger.error(`❌ [YouTube] Failed to update refresh token:`, error);
+  private async persistTokens(
+    channelId: string,
+    tokens: { access_token?: string | null; refresh_token?: string | null },
+  ): Promise<void> {
+    const data: { accessToken?: string; refreshToken?: string } = {};
+    if (tokens.access_token) {
+      data.accessToken = tokens.access_token;
     }
+    if (tokens.refresh_token) {
+      data.refreshToken = tokens.refresh_token;
+    }
+    if (!data.accessToken && !data.refreshToken) {
+      return;
+    }
+
+    await this.prisma.connectedAccount.updateMany({
+      where: {
+        platform: ConnectedPlatform.YOUTUBE,
+        externalChannelId: channelId,
+      },
+      data,
+    });
+  }
+
+  private async holdForWinner(userId: string): Promise<void> {
+    const giveaway = await this.prisma.streamGiveaway.findFirst({
+      where: { userId, status: 'DONE' },
+      orderBy: { updatedAt: 'desc' },
+    });
+    const platforms = (giveaway?.platforms as ConnectedPlatform[]) || [];
+    if (!platforms.includes(ConnectedPlatform.YOUTUBE)) {
+      return;
+    }
+
+    this.cancelScheduledStop(userId);
+    const account = await this.prisma.connectedAccount.findFirst({
+      where: { userId, platform: ConnectedPlatform.YOUTUBE },
+    });
+    if (account?.refreshToken && !this.isPollingActive(account.externalChannelId)) {
+      await this.startChatPolling(account.externalChannelId, account.accessToken, account.refreshToken);
+    }
+    this.scheduleStopUser(userId);
+  }
+
+  private scheduleStopUser(userId: string): void {
+    this.cancelScheduledStop(userId);
+    const timer = setTimeout(() => {
+      this.stopTimers.delete(userId);
+      this.stopUser(userId).catch((error) => {
+        this.logger.error(`❌ [YouTube] Failed to stop chat after winner window for user ${userId}:`, error);
+      });
+    }, WINNER_GRACE_MS);
+    this.stopTimers.set(userId, timer);
+    this.logger.log(`⏳ [YouTube] Keeping chat for ${WINNER_GRACE_MS / 1000}s to capture the winner message`);
+  }
+
+  private cancelScheduledStop(userId: string): void {
+    const timer = this.stopTimers.get(userId);
+    if (timer) {
+      clearTimeout(timer);
+      this.stopTimers.delete(userId);
+    }
+  }
+
+  private async resumeOpenGiveaways(): Promise<void> {
+    const openGiveaways = await this.prisma.streamGiveaway.findMany({
+      where: { status: 'OPEN' },
+    });
+    for (const giveaway of openGiveaways) {
+      const platforms = giveaway.platforms as ConnectedPlatform[];
+      if (platforms.includes(ConnectedPlatform.YOUTUBE)) {
+        await this.syncUser(giveaway.userId);
+      }
+    }
+  }
+
+  private isLiveChatGone(error: { errors?: Array<{ reason?: string }>; response?: { data?: { error?: { errors?: Array<{ reason?: string }> } } }; message?: string }): boolean {
+    const reasons = [
+      error?.errors?.[0]?.reason,
+      error?.response?.data?.error?.errors?.[0]?.reason,
+    ];
+    return reasons.some((reason) => reason === 'liveChatEnded' || reason === 'liveChatNotFound' || reason === 'liveChatDisabled')
+      || (error?.message || '').includes('liveChatEnded');
+  }
+
+  private async acquirePollLock(channelId: string): Promise<boolean> {
+    const key = this.pollLockKey(channelId);
+    const current = await this.redis.get(key);
+    if (current === this.instanceId) {
+      await this.redis.expire(key, POLL_LOCK_TTL_SECONDS);
+      return true;
+    }
+    if (current) {
+      return false;
+    }
+    return this.redis.setNx(key, this.instanceId, POLL_LOCK_TTL_SECONDS);
+  }
+
+  private async releasePollLock(channelId: string): Promise<void> {
+    const key = this.pollLockKey(channelId);
+    const current = await this.redis.get(key);
+    if (current === this.instanceId) {
+      await this.redis.del(key);
+    }
+  }
+
+  private pollLockKey(channelId: string): string {
+    return `chat:poll:youtube:${channelId}`;
   }
 
   /**

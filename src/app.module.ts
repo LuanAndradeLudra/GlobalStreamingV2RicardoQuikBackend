@@ -21,6 +21,8 @@ import { KickModule } from './kick/kick.module';
 import { TwitchModule } from './twitch/twitch.module';
 import { TwitchWebhooksModule } from './twitch-webhooks/twitch-webhooks.module';
 import { YouTubeChatModule } from './youtube-chat/youtube-chat.module';
+import { TikTokChatModule } from './tiktok-chat/tiktok-chat.module';
+import { StreamChatBusModule } from './stream-chat/stream-chat-bus.module';
 import { TokenRefreshCronModule } from './token-refresh-cron/token-refresh-cron.module';
 import { CleanupCronModule } from './cleanup-cron/cleanup-cron.module';
 import { EventsModule } from './events/events.module';
@@ -32,6 +34,7 @@ import { MonthlyWinLimitModule } from './monthly-win-limit/monthly-win-limit.mod
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     RedisModule,
+    StreamChatBusModule,
     StreamGiveawayRedisModule,
     AuthModule,
     UserModule,
@@ -51,6 +54,7 @@ import { MonthlyWinLimitModule } from './monthly-win-limit/monthly-win-limit.mod
     TwitchModule,
     TwitchWebhooksModule,
     YouTubeChatModule,
+    TikTokChatModule,
     TokenRefreshCronModule,
     CleanupCronModule,
     EventsModule,
