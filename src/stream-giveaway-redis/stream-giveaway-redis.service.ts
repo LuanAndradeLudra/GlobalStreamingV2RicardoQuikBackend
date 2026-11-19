@@ -250,13 +250,38 @@ export class StreamGiveawayRedisService {
     externalUserId: string,
     method: string,
   ): Promise<void> {
-    const key = this.getParticipantKey(streamGiveawayId, platform, externalUserId);
-    await this.redis.sadd(key, method);
-    
-    // Define TTL de 30 dias para limpeza automática
-    await this.redis.expire(key, 30 * 24 * 60 * 60);
+    await this.claimParticipant(streamGiveawayId, platform, externalUserId, method);
+  }
 
-    this.logger.log(`✅ Marked participant: ${externalUserId} with method ${method}`);
+  /**
+   * Reserva a vaga de forma atômica. Retorna false se esse método já foi reservado.
+   */
+  async claimParticipant(
+    streamGiveawayId: string,
+    platform: ConnectedPlatform,
+    externalUserId: string,
+    method: string,
+  ): Promise<boolean> {
+    const key = this.getParticipantKey(streamGiveawayId, platform, externalUserId);
+    const added = await this.redis.sadd(key, method);
+    await this.redis.expire(key, 30 * 24 * 60 * 60);
+    const claimed = added === 1;
+    if (claimed) {
+      this.logger.log(`✅ Marked participant: ${externalUserId} with method ${method}`);
+    } else {
+      this.logger.log(`⚠️ Duplicate entry detected: ${externalUserId} with method ${method}`);
+    }
+    return claimed;
+  }
+
+  async releaseParticipant(
+    streamGiveawayId: string,
+    platform: ConnectedPlatform,
+    externalUserId: string,
+    method: string,
+  ): Promise<void> {
+    const key = this.getParticipantKey(streamGiveawayId, platform, externalUserId);
+    await this.redis.srem(key, method);
   }
 
   /**

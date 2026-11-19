@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { Subscription } from 'rxjs';
-import { ConnectedPlatform, EntryMethod } from '@prisma/client';
+import { ConnectedPlatform, EntryMethod, StreamGiveawayParticipant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GiveawayService } from '../giveaway/giveaway.service';
 import { StreamGiveawayRedisService } from '../stream-giveaway-redis/stream-giveaway-redis.service';
@@ -346,8 +346,9 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
     };
     const messageText = (raw.content || raw.comment || '').trim();
     const user = raw.user;
-    const userId = user?.idStr || user?.id || raw.userId || '';
+    const userId = this.stableTikTokId(user?.idStr) || this.stableTikTokId(user?.id) || this.stableTikTokId(raw.userId);
     const username = user?.displayId || user?.nickname || raw.uniqueId || raw.nickname || '';
+    const handle = (user?.displayId || raw.uniqueId || username).trim().toLowerCase();
     const avatarUrl = user?.avatarThumb?.urlList?.[0] || raw.profilePictureUrl;
 
     if (!messageText || !userId || !username) {
@@ -391,16 +392,6 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const isDuplicate = await this.redisService.checkDuplicate(
-      activeGiveaway.streamGiveawayId,
-      ConnectedPlatform.TIKTOK,
-      userId,
-      method,
-    );
-    if (isDuplicate) {
-      return;
-    }
-
     const ticketInfo = await this.giveawayService.calculateTicketsForParticipant({
       streamGiveawayId: activeGiveaway.streamGiveawayId,
       platform: ConnectedPlatform.TIKTOK,
@@ -413,31 +404,75 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const participant = await this.giveawayService.addParticipant(
-      activeGiveaway.userId,
-      activeGiveaway.streamGiveawayId,
-      {
-        platform: ConnectedPlatform.TIKTOK,
-        externalUserId: userId,
-        username,
-        avatarUrl,
-        method,
-        tickets: ticketInfo.totalTickets,
-        metadata: {
-          role,
-          baseTickets: ticketInfo.baseTickets,
-          messageText,
-          isSubscriber,
-        },
-      },
-    );
-
-    await this.redisService.markParticipant(
+    const externalUserId = userId || handle;
+    const claimedUser = await this.redisService.claimParticipant(
       activeGiveaway.streamGiveawayId,
       ConnectedPlatform.TIKTOK,
-      userId,
+      externalUserId,
       method,
     );
+    if (!claimedUser) {
+      return;
+    }
+
+    const claimedHandle =
+      !handle || handle === externalUserId
+        ? true
+        : await this.redisService.claimParticipant(
+            activeGiveaway.streamGiveawayId,
+            ConnectedPlatform.TIKTOK,
+            `handle:${handle}`,
+            method,
+          );
+    if (!claimedHandle) {
+      await this.redisService.releaseParticipant(
+        activeGiveaway.streamGiveawayId,
+        ConnectedPlatform.TIKTOK,
+        externalUserId,
+        method,
+      );
+      this.logger.log(`⚠️ [TikTok] @${handle} already joined with method ${method}`);
+      return;
+    }
+
+    let participant: StreamGiveawayParticipant;
+    try {
+      participant = await this.giveawayService.addParticipant(
+        activeGiveaway.userId,
+        activeGiveaway.streamGiveawayId,
+        {
+          platform: ConnectedPlatform.TIKTOK,
+          externalUserId,
+          username,
+          avatarUrl,
+          method,
+          tickets: ticketInfo.totalTickets,
+          metadata: {
+            role,
+            baseTickets: ticketInfo.baseTickets,
+            messageText,
+            isSubscriber,
+          },
+        },
+      );
+    } catch (error) {
+      await this.redisService.releaseParticipant(
+        activeGiveaway.streamGiveawayId,
+        ConnectedPlatform.TIKTOK,
+        externalUserId,
+        method,
+      );
+      if (handle && handle !== externalUserId) {
+        await this.redisService.releaseParticipant(
+          activeGiveaway.streamGiveawayId,
+          ConnectedPlatform.TIKTOK,
+          `handle:${handle}`,
+          method,
+        );
+      }
+      throw error;
+    }
+
     await this.redisService.incrementMetric(activeGiveaway.streamGiveawayId, 'total_participants');
 
     this.realtimeGateway.emitParticipantAdded({
@@ -467,6 +502,19 @@ export class TikTokChatService implements OnModuleInit, OnModuleDestroy {
 
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  private stableTikTokId(value: unknown): string {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(Math.trunc(value));
+    }
+    if (typeof value === 'bigint') {
+      return value.toString();
+    }
+    return '';
   }
 
   private async acquireLock(uniqueId: string): Promise<boolean> {
